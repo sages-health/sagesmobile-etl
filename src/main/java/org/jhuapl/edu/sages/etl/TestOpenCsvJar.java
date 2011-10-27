@@ -10,13 +10,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.sql.Types;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -25,6 +25,8 @@ import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
 import org.postgresql.util.PSQLException;
 
 import au.com.bytecode.opencsv.CSVReader;
@@ -39,19 +41,21 @@ public class TestOpenCsvJar {
 	private static final String ETL_STAGING_DB = "ETL_STAGING_DB";
 	private static String src_table_name;
 	private static String dst_table_name;
+	private static String prod_table_name;
 	/** maps the destination columns to their sql-datatype qualifier for generating the schema */
 	private static Map<String,String> DEST_COLTYPE_MAP;
 	
 	/** maps the destination columns to their java.sql.Types for setting ? parameters on prepared statements */
+	//http://download.oracle.com/javase/6/docs/api/constant-values.html#java.sql.Types.TIME
 	private static Map<String, Integer> DEST_SQLTYPE_MAP;
 	
-	//http://download.oracle.com/javase/6/docs/api/constant-values.html#java.sql.Types.TIME
 		
 	/** properties holders */
 	private Properties props = new Properties();
 	private Properties props_dateformats = new Properties();
 	private Properties props_customsql_cleanse = new Properties();
 	private Properties props_customsql_staging = new Properties();
+	private Properties props_customsql_final_to_prod = new Properties();
 		
 	/** target database connection settings*/
 	private String dbms;
@@ -114,6 +118,7 @@ public class TestOpenCsvJar {
 			this.props_dateformats.load(new FileInputStream("dateformats.properties"));
 			this.props_customsql_cleanse.load(new FileInputStream("customsql\\cleanse_table\\cleanse_sql.properties"));
 			this.props_customsql_staging.load(new FileInputStream("customsql\\staging_table\\staging_sql.properties"));
+			this.props_customsql_staging.load(new FileInputStream("customsql\\staging-to-final_loader\\staging-to-final_loader_sql.properties"));
 		} catch (IOException e){
 			//TODO: LOG THIS ERROR
 			e.printStackTrace();
@@ -142,13 +147,33 @@ public class TestOpenCsvJar {
 
 	    if (this.dbms.equals(dbid_mysql)) {
 	    	con = DriverManager.getConnection("jdbc:" + this.dbms + "://" + this.serverName + ":" + this.portNumber + "/", connectionProps);
-	    } else if (this.dbms.equals(dbid_derby)) {
-	    	con = DriverManager.getConnection("jdbc:" + this.dbms + ":" + this.dbName + ";create=true", connectionProps);
+	    } else if (this.dbms.equals(dbid_msaccess)) {
+	    	//http://www.javaworld.com/javaworld/javaqa/2000-09/03-qa-0922-access.html
+	    	// jdbc:odbc:<NAME>
+	    	try {
+				Class.forName("sun.jdbc.odbc.JdbcOdbcDriver");
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    	//http://www.planet-source-code.com/vb/scripts/ShowCode.asp?txtCodeId=2691&lngWId=2
+	    	
+	    	//String url = "C:\\Documents and Settings\\POKUAM1\\My Documents\\mdbtestdjib.mdb";
+	    	String url = "C:\\Documents and Settings\\POKUAM1\\My Documents\\testdjib.accdb";
+	    	File file = new File(url);
+	    	String fileTypes = "*.mdb";
+	    	//String jdbcUrl = "jdbc:odbc:Driver={Microsoft Access Driver (" + fileTypes + ")};DBQ=" + file.getAbsolutePath();
+	    	String jdbcUrl = "jdbc:odbc:Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + file.getAbsolutePath();
+	    	System.out.println("jdbcurl: " + jdbcUrl);
+	    	con = DriverManager.getConnection(jdbcUrl);
+	    	//con = DriverManager.getConnection("jdbc:odbc:" + this.dbms);
+	    	System.out.println("Connection ok.");
 	    } else if (this.dbms.equals(dbid_postgresql)) {
 	    	con = DriverManager.getConnection("jdbc:" + this.dbms + "://" + this.serverName + ":" + portNumber + "/" + this.dbName, connectionProps);
 	    }
 	    //TODO: DO AS LOGGING
 	    System.out.println("Connected to database");
+	    con.setAutoCommit(false);
 	    return con;
     }
 
@@ -260,6 +285,14 @@ public class TestOpenCsvJar {
 	    ArrayList<String[]> entries_rawdata = master_entries_rawdata;
 	    
 	    /*********************************** 
+	     * SAVEPOINT #1 
+	     ***********************************
+	     *  
+	     ***********************************/
+	     //Savepoint save1 = c.setSavepoint();
+
+	    
+	    /*********************************** 
 	     * build ETL_CLEANSE_TABLE 
 	     ***********************************
 	     * SQL: "CREATE TABLE..." 
@@ -274,12 +307,15 @@ public class TestOpenCsvJar {
 	     */
 	    int zsrc=1;
 	    for (String colHead_src: header_src){
+	    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess) && "time".equals(colHead_src)){
+	    		colHead_src = "accessetl_time";
+	    	}
 	    	createStmt_src += colHead_src + " varchar(255),\n";
 	    	PARAMINDX_SRC.put(colHead_src, zsrc);
 	    	zsrc++;
 	    }
 	   
-	    /**remove trailing ',' */
+	    /**remove trailing ',' TODO CLEAN UP WITH StringUtils.join() */
 	    int lastComma = createStmt_src.lastIndexOf(",\n");
 	    createStmt_src = createStmt_src.substring(0, lastComma);
 	    createStmt_src += "\n);";
@@ -295,9 +331,15 @@ public class TestOpenCsvJar {
 	    	} else {
 	    		throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
+	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
+	    	if ("S0001".equals(e.getSQLState())){
+	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    	} else {
+	    		throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
+	    	}
 	    } catch (Exception e) {
 	    	throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
-	    }
+	    } 
 	    
 		String sqlaltertableAddColumn = addFlagColumn(src_table_name);
 	    PreparedStatement PS_addcolumn_Flag = c.prepareStatement(sqlaltertableAddColumn);
@@ -311,73 +353,31 @@ public class TestOpenCsvJar {
 	    	} else {
 	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    	}
+	    } catch (SQLException e){ //TODO MS Access specific
+	    	if ("S0021".equals(e.getSQLState())){
+	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    	} else {
+	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
+	    	}
 	    } catch (Exception e) {
 	    	throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    }
-	    
-  
-	    
-	    /************************************************ 
-	     * build reusable 'INSERT INTO CLEANSING_TABLE'
-	     ************************************************
-	     * SQL: "INSERT INTO SRC_TABLE..."
-	     * Example SQL: "INSERT INTO src_table_name VALUES (?, ?, ?, ?, ?,...)"
-	     * data will be inserted as text sql-datatype
-	     *  
-	     */
-	    
-	    String insertStmt_src = "INSERT INTO " + src_table_name + " VALUES (";
-	    
-	    for (int h=0; h < header_src.length; h++){
-	    	insertStmt_src = insertStmt_src + "?,"; 
-	    }
-	    
-	    /** remove trailing ','   */
-    	int lastTick = insertStmt_src.lastIndexOf(",");
-    	insertStmt_src = insertStmt_src.substring(0, lastTick);
-    	insertStmt_src += ");";
-    	
-    	System.out.println("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
-    	PreparedStatement ps_INSERT_CLEANSE = c.prepareStatement(insertStmt_src);
-	    	
-    	/** set values for the ? parameters, NOTE all values have text sql-datatype */
-	    for (int e=0; e < entries_rawdata.size(); e++){
-	    	String[] entry = entries_rawdata.get(e);
-	    	String log_insertStmt = "VALUES:"; //TODO: LOGGING
-	    	
-	    	for (int p=0; p < entry.length; p++){
-	    		ps_INSERT_CLEANSE.setString(p+1, entry[p]);
-	    		log_insertStmt += "'" + entry[p] + "',"; 
-	    	}
-	    	
-	    	ps_INSERT_CLEANSE.execute();
-	    	System.out.println("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
-	    }
-	    
-	    /** TODO
-	     * 
-	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	     * INJECT THE CUSTOM SQL AGAINST THE CLEANSE TABLE HERE
-	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	     * 
-	     * */
-    	Properties customCleanseSqlprops = tocj.props_customsql_cleanse;
-    	int numSql = customCleanseSqlprops.size();
-    	for (int i = 1; i <= numSql; i++){
-    		String sql = customCleanseSqlprops.getProperty(String.valueOf(i));
-    		sql = sql.replace("$table", src_table_name);
-    		System.out.println("CUSTOM SQL: " + sql);
-    		PreparedStatement ps = c.prepareStatement(sql);
-    		ps.execute();
-    	}
-    	
-	    
+
+    
+	    /***************************************************************************
+	     * build ETL_STAGING_TABLE 
+	     ***************************************************************************
+	     * SQL: "CREATE TABLE..." 
+	     * - all columns have sql-datatype identical to FINAL DESTINATION TABLE
+	     * - column definitions build from metadata of FINAL DESTINATION TABLE
+	     ***************************************************************************/
+    
 	    /** get metadata for FINAL DESTINATION TABLE and use it to build STAGING */
 		DatabaseMetaData dbmd = c.getMetaData();
 		String catalog = null;
 		String schemaPattern = null;
 		//String tableNamePattern = "etl_individual";
-		String tableNamePattern = tocj.props.getProperty("tableNamePattern");
+		String tableNamePattern = tocj.props.getProperty("tableNamePattern"); //TODO rename this
 		String columnNamePattern = null;
 		
 		ResultSet rs_FINAL = dbmd.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);
@@ -402,8 +402,15 @@ public class TestOpenCsvJar {
 			String colName = rs_FINAL.getString("COLUMN_NAME");
 			String colType = rs_FINAL.getString("TYPE_NAME");
 			int colSqlType = rs_FINAL.getInt("DATA_TYPE");
-			String isAutoInc = rs_FINAL.getString("IS_AUTOINCREMENT");  /**YES, NO, or "" */
-			if ("serial".equals(colType) || "YES".equals(isAutoInc)) {
+			String isAutoInc = "";
+			try {
+				isAutoInc = rs_FINAL.getString("IS_AUTOINCREMENT");  /**YES, NO, or "" */
+			} catch (SQLException e) {
+				if ("S0022".equals(e.getSQLState())){ // MS Access specific
+					System.out.println("ETL_LOGGER:" + "this database does not support IS_AUTOINCREMENT result meta data column. safe to ignore");
+				}
+			}
+			if ("serial".equalsIgnoreCase(colType) || "COUNTER".equalsIgnoreCase(colType)|| "YES".equalsIgnoreCase(isAutoInc)) {
 				continue;
 			}
 			
@@ -420,8 +427,8 @@ public class TestOpenCsvJar {
 		
 		/** the built "CREATE TABLE STAGING_TABLE..." string */
 	    
-		/** remove trailing ','   */
-	    lastTick = destTableStr.lastIndexOf(",");
+		/** remove trailing ','  TODO CLEAN UP WITH StringUtils.join()  */
+	    int lastTick = destTableStr.lastIndexOf(",");
 	    destTableStr = destTableStr.substring(0, lastTick);
 	    String createStagingStmt = "CREATE TABLE " + dst_table_name + "\n(\n" + destTableStr + "\n);";
 		System.out.println(createStagingStmt); //TODO: LOGGING
@@ -436,6 +443,12 @@ public class TestOpenCsvJar {
 	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
 	    		throw abort("Uh-oh, something happened trying to build the ETL_STAGING_DB.", e); 
+	    	}
+	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
+	    	if ("S0001".equals(e.getSQLState())){
+	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    	} else {
+	    		throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
 	    	throw abort("Uh-oh, something happened trying to build the ETL_STAGING_DB.", e); 
@@ -453,6 +466,12 @@ public class TestOpenCsvJar {
 	    	} else {
 	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_STAGING_DB.", e); 
 	    	}
+	    } catch (SQLException e){ //TODO MS Access specific
+	    	if ("S0021".equals(e.getSQLState())){
+	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    	} else {
+	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
+	    	}
 	    } catch (Exception e) {
 	    	throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_STAGING_DB.", e); 
 	    }
@@ -469,6 +488,91 @@ public class TestOpenCsvJar {
 			MAPPING_MAP.put(key, value);
 			MAPPING_REV_MAP.put(value, key);
 		}
+	    
+	    
+	    /************************************************ 
+	     * build reusable 'INSERT INTO CLEANSING_TABLE'
+	     ************************************************
+	     * SQL: "INSERT INTO SRC_TABLE..."
+	     * Example SQL: "INSERT INTO src_table_name VALUES (?, ?, ?, ?, ?,...)"
+	     * data will be inserted as text sql-datatype
+	     *  
+	     */
+	    
+	    String insertStmt_src = "INSERT INTO " + src_table_name + " VALUES (";
+	    
+	    for (int h=0; h < header_src.length; h++){
+	    	insertStmt_src = insertStmt_src + "?,"; 
+	    }
+	    
+    	/***
+    	 * MS Access specific 
+    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
+    	 * Edit this in SQL view.
+    	 * 
+    	 * (this is for the "etl_flag" column that was added after table creation
+    	 */
+    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess)){
+    		insertStmt_src = insertStmt_src + "?,"; 
+    	}
+    	
+	    /** remove trailing ','  TODO CLEAN UP WITH StringUtils.join() */
+    	lastTick = insertStmt_src.lastIndexOf(",");
+    	insertStmt_src = insertStmt_src.substring(0, lastTick);
+    	insertStmt_src += ");";
+    	
+    	System.out.println("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
+    	PreparedStatement ps_INSERT_CLEANSE = c.prepareStatement(insertStmt_src);
+	    	
+    	/** set values for the ? parameters, NOTE all values have text sql-datatype */
+	    for (int e=0; e < entries_rawdata.size(); e++){
+	    	String[] entry = entries_rawdata.get(e);
+	    	String log_insertStmt = "VALUES:"; //TODO: LOGGING
+	    	
+	    	for (int p=0; p < entry.length; p++){
+	    		ps_INSERT_CLEANSE.setString(p+1, entry[p]);
+	    		log_insertStmt += "'" + entry[p] + "',"; 
+	    	}
+	    	
+	    	/***
+	    	 * MS Access specific 
+	    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
+	    	 * Edit this in SQL view.
+	    	 * 
+	    	 */
+	    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess)){
+	    		ps_INSERT_CLEANSE.setString(entry.length + 1, "no flag");
+	    		log_insertStmt += "'no flag'"; 
+	    	}
+	    	
+	    	System.out.println("ETL_LOGGER:(ps_INSERT_CLEANSE)= " + ps_INSERT_CLEANSE.toString());
+	    	System.out.println("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
+	    	try {
+	    		ps_INSERT_CLEANSE.execute();
+	    	} catch (Exception e1){
+	    		
+	    	}
+	    }
+	    
+	    /** TODO
+	     * 
+	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	     * INJECT THE CUSTOM SQL AGAINST THE CLEANSE TABLE HERE
+	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	     * 
+	     * */
+    	Properties customCleanseSqlprops = tocj.props_customsql_cleanse;
+    	int numSql = customCleanseSqlprops.size();
+    	for (int i = 1; i <= numSql; i++){
+    		String sql = customCleanseSqlprops.getProperty(String.valueOf(i));
+    		sql = sql.replace("$table", src_table_name);
+    		System.out.println("CUSTOM SQL: " + sql);
+    		PreparedStatement ps = c.prepareStatement(sql);
+    		ps.execute();
+    	}
+    	
+	    
+
 /*		
 		Map<String, String> MAPPING_MAP2 = new LinkedHashMap<String,String>(){{
 			put("col_districtid","dis3");
@@ -654,7 +758,43 @@ public class TestOpenCsvJar {
     		ps.execute();
     	}
     	
+   
     	
+    	
+    	System.out.println("FINAL LOAD INTO THE PRODUCTION TABLE STARTING.");
+    	/** TODO
+    	 * 
+    	 * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    	 * INJECT THE CUSTOM TRANSFER SQL AGAINST THE FINAL PRODUCTION TABLE HERE
+    	 * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    	 * 
+    	 * */
+    	//INSERT INTO $staging_table ($columnlist) SELECT $prodcolumnlist FROM $staging_table
+		prod_table_name = tocj.props.getProperty("tableNamePattern");
+    	String insertSelect_Production = "INSERT INTO " + prod_table_name + " (_columnlist_) SELECT _columnlist_ FROM " + dst_table_name;
+    	
+    	//TODO: don't want to build this each time. enhance
+    	String columnlist = new StringUtils().join(DEST_COLTYPE_MAP.keySet(), ","); 
+    	System.out.println("ETL_LOGGER(columnList): " + columnlist);
+
+    	insertSelect_Production = insertSelect_Production.replaceAll("_columnlist_", columnlist);
+    	System.out.println("ETL_LOGGER(insertSelect_Production): " + insertSelect_Production);
+    	
+    	PreparedStatement ps_finalToProd = c.prepareStatement(insertSelect_Production);
+    	try {
+    		ps_finalToProd.execute();
+    	} catch (Exception e) {
+    		System.out.println("ETL_LOGGER: OOOOOOPS SOMETHING HAPPENED BAD IN THE END. SHUCKS");
+    	}
+    	Properties customProdLoaderSqlprops = tocj.props_customsql_final_to_prod;
+		int numSql3 = customProdLoaderSqlprops.size();
+    	for (int i = 1; i <= numSql3; i++){
+    		String sql = customProdLoaderSqlprops.getProperty(String.valueOf(i));
+    		sql = sql.replace("$table", dst_table_name);
+    		System.out.println("CUSTOM SQL: " + sql);
+    		PreparedStatement ps = c.prepareStatement(sql);
+    		ps.execute();
+    	}
     	
     	
     	/**MAPPING_MAP
@@ -751,27 +891,44 @@ public class TestOpenCsvJar {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}*/ 	
-	    
+    	
+    	
+    	/**
+    	 * decision to use FileUtils
+    	 * http://stackoverflow.com/questions/106770/standard-concise-way-to-copy-a-file-in-java
+    	 * 
+    	 * had terrible luck using java's renameTo() which is stated to be platform dependent and not
+    	 * guaranteed to work consistently:
+    	 * http://stackoverflow.com/questions/1000183/reliable-file-renameto-alternative-on-windows
+    	 * http://www.bigsoft.co.uk/blog/index.php/2010/02/02/file-renameto-always-fails-on-windows
+    	 */
+	    FileUtils fu = new FileUtils();
     	//File (or dir) to be moved
     	for (File file: readCsvFiles){
-	    	//file = new File("filename");
 	    	Date date = new Date();
 	    	long dtime = date.getTime();
-	    	//Destination dir
+	    	/** Destination dir */
 	    	File dir = new File(outputdir_csvfiles);
-	    	
-	    	//Move file to new dir
-	    	boolean success = file.renameTo(new File(dir, dtime + "_"+ file.getName()));
-	    	if (!success){
+	    	/** Move file to new dir */
+	    	fu.copyFile(file, new File(dir, dtime + "_"+ file.getName()));
+	    	//boolean success = file.renameTo(new File(dir, dtime + "_"+ file.getName()));
+	    	Thread.sleep(2000);
+	    	fu.forceDelete(file);
+
+	    	if (false){
 	    		//File not successfully moved
+	    		System.out.println("FILES NOT MOVED SOMETHING BAD HAPPENED. WAIT 2 SECONDS. THEN LOOP RETRY");
+	    		Thread.sleep(2000);
 	    		//TODO: THIS DOESN'T RENAME IF FILE IS ALREADY THERE. MAYBE STICK ON TIMESTAMP TO MAKE UNIQUE??
-	    		System.out.println("FILES NOT MOVED SOMETHING BAD HAPPENED. ROLLBACK EVERYTHING");
 	    		//throw new Exception("FILES NOT MOVED SOMETHING BAD HAPPENED. ROLLBACK EVERYTHING");
+	    			Thread.sleep(10000);
+	    			System.out.println("FILE STILL NOT MOVED SOMETHING BAD HAPPENED. WAIT 10 SECONDS. THEN LOOP RETRY");
 	    	} else {
 	    		file.delete();
 	    	}
     	}
 	}
+
 
 	/**
 	 * @return
