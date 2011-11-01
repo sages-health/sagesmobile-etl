@@ -1,4 +1,4 @@
-package org.jhuapl.edu.sages.etl;
+package org.jhuapl.edu.sages.etl.oldstuff;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileReader;
@@ -27,6 +27,7 @@ import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
+import org.jhuapl.edu.sages.etl.SagesEtlException;
 import org.postgresql.util.PSQLException;
 
 import au.com.bytecode.opencsv.CSVReader;
@@ -35,7 +36,7 @@ import au.com.bytecode.opencsv.CSVReader;
  * @author POKUAM1
  * @created Oct 4, 2011
  */
-public class TestOpenCsvJar {
+public class TestOpenCsvJarV1 {
 
 	private static final String ETL_CLEANSE_TABLE = "ETL_CLEANSE_TABLE";
 	private static final String ETL_STAGING_DB = "ETL_STAGING_DB";
@@ -86,7 +87,7 @@ public class TestOpenCsvJar {
 	 * @param serverName
 	 * @param dbName
 	 */
-	public TestOpenCsvJar(String dbms, int portNumber, String userName,
+	public TestOpenCsvJarV1(String dbms, int portNumber, String userName,
 			String password, String serverName, String dbName) {
 		super();
 		this.props = new Properties();
@@ -107,7 +108,7 @@ public class TestOpenCsvJar {
 	 * @param dbName
 	 * @throws SagesEtlException 
 	 */
-	public TestOpenCsvJar() throws SagesEtlException {
+	public TestOpenCsvJarV1() throws SagesEtlException {
 		super();
 		try {
 			this.props = new Properties();
@@ -193,7 +194,7 @@ public class TestOpenCsvJar {
 	 */
 	public static void main(String[] args) throws Exception {
 //		TestOpenCsvJar tocj = new TestOpenCsvJar("postgresql",5432,"postgres","pgPOKU123!","localhost","ETL_TEST");
-		TestOpenCsvJar tocj = new TestOpenCsvJar();
+		TestOpenCsvJarV1 tocj = new TestOpenCsvJarV1();
 		Connection c = null; 
 		try {
 			c = tocj.getConnection();
@@ -289,7 +290,7 @@ public class TestOpenCsvJar {
 	     ***********************************
 	     *  
 	     ***********************************/
-	     //Savepoint save1 = c.setSavepoint();
+	    Savepoint save1 = c.setSavepoint();
 
 	    
 	    /*********************************** 
@@ -307,7 +308,7 @@ public class TestOpenCsvJar {
 	     */
 	    int zsrc=1;
 	    for (String colHead_src: header_src){
-	    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess) && "time".equals(colHead_src)){
+	    	if (tocj.dbms.equals(TestOpenCsvJarV1.dbid_msaccess) && "time".equals(colHead_src)){
 	    		colHead_src = "accessetl_time";
 	    	}
 	    	createStmt_src += colHead_src + " varchar(255),\n";
@@ -329,15 +330,18 @@ public class TestOpenCsvJar {
 	    	if ("42P07".equals(e.getSQLState())){
 	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
+	    		c.rollback(save1);
 	    		throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
 	    	if ("S0001".equals(e.getSQLState())){
 	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
+	    		c.rollback(save1);
 	    		throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
+	    	c.rollback(save1);
 	    	throw abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    } 
 	    
@@ -351,33 +355,117 @@ public class TestOpenCsvJar {
 	    	if ("42701".equals(e.getSQLState())){
 	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
+	    		c.rollback(save1);
 	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (SQLException e){ //TODO MS Access specific
 	    	if ("S0021".equals(e.getSQLState())){
 	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
+	    		c.rollback(save1);
 	    		throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
+	    	c.rollback(save1);
 	    	throw abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    }
-
-    
-	    /***************************************************************************
-	     * build ETL_STAGING_TABLE 
-	     ***************************************************************************
-	     * SQL: "CREATE TABLE..." 
-	     * - all columns have sql-datatype identical to FINAL DESTINATION TABLE
-	     * - column definitions build from metadata of FINAL DESTINATION TABLE
-	     ***************************************************************************/
-    
+	    
+  
+	    /*********************************** 
+	     * SAVEPOINT #2 
+	     ***********************************
+	     *  
+	     ***********************************/
+	    Savepoint save2 = c.setSavepoint();
+	    
+	    /************************************************ 
+	     * build reusable 'INSERT INTO CLEANSING_TABLE'
+	     ************************************************
+	     * SQL: "INSERT INTO SRC_TABLE..."
+	     * Example SQL: "INSERT INTO src_table_name VALUES (?, ?, ?, ?, ?,...)"
+	     * data will be inserted as text sql-datatype
+	     *  
+	     */
+	    
+	    String insertStmt_src = "INSERT INTO " + src_table_name + " VALUES (";
+	    
+	    for (int h=0; h < header_src.length; h++){
+	    	insertStmt_src = insertStmt_src + "?,"; 
+	    }
+	    
+    	/***
+    	 * MS Access specific 
+    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
+    	 * Edit this in SQL view.
+    	 * 
+    	 * (this is for the "etl_flag" column that was added after table creation
+    	 */
+    	if (tocj.dbms.equals(TestOpenCsvJarV1.dbid_msaccess)){
+    		insertStmt_src = insertStmt_src + "?,"; 
+    	}
+    	
+	    /** remove trailing ','  TODO CLEAN UP WITH StringUtils.join() */
+    	int lastTick = insertStmt_src.lastIndexOf(",");
+    	insertStmt_src = insertStmt_src.substring(0, lastTick);
+    	insertStmt_src += ");";
+    	
+    	System.out.println("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
+    	PreparedStatement ps_INSERT_CLEANSE = c.prepareStatement(insertStmt_src);
+	    	
+    	/** set values for the ? parameters, NOTE all values have text sql-datatype */
+	    for (int e=0; e < entries_rawdata.size(); e++){
+	    	String[] entry = entries_rawdata.get(e);
+	    	String log_insertStmt = "VALUES:"; //TODO: LOGGING
+	    	
+	    	for (int p=0; p < entry.length; p++){
+	    		ps_INSERT_CLEANSE.setString(p+1, entry[p]);
+	    		log_insertStmt += "'" + entry[p] + "',"; 
+	    	}
+	    	
+	    	/***
+	    	 * MS Access specific 
+	    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
+	    	 * Edit this in SQL view.
+	    	 * 
+	    	 */
+	    	if (tocj.dbms.equals(TestOpenCsvJarV1.dbid_msaccess)){
+	    		ps_INSERT_CLEANSE.setString(entry.length + 1, "no flag");
+	    		log_insertStmt += "'no flag'"; 
+	    	}
+	    	
+	    	System.out.println("ETL_LOGGER:(ps_INSERT_CLEANSE)= " + ps_INSERT_CLEANSE.toString());
+	    	System.out.println("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
+	    	try {
+	    		ps_INSERT_CLEANSE.execute();
+	    	} catch (Exception e1){
+	    		c.rollback(save2);
+	    	}
+	    }
+	    
+	    /** TODO
+	     * 
+	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	     * INJECT THE CUSTOM SQL AGAINST THE CLEANSE TABLE HERE
+	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	     * 
+	     * */
+    	Properties customCleanseSqlprops = tocj.props_customsql_cleanse;
+    	int numSql = customCleanseSqlprops.size();
+    	for (int i = 1; i <= numSql; i++){
+    		String sql = customCleanseSqlprops.getProperty(String.valueOf(i));
+    		sql = sql.replace("$table", src_table_name);
+    		System.out.println("CUSTOM SQL: " + sql);
+    		PreparedStatement ps = c.prepareStatement(sql);
+    		ps.execute();
+    	}
+    	
+	    
 	    /** get metadata for FINAL DESTINATION TABLE and use it to build STAGING */
 		DatabaseMetaData dbmd = c.getMetaData();
 		String catalog = null;
 		String schemaPattern = null;
 		//String tableNamePattern = "etl_individual";
-		String tableNamePattern = tocj.props.getProperty("tableNamePattern"); //TODO rename this
+		String tableNamePattern = tocj.props.getProperty("tableNamePattern");
 		String columnNamePattern = null;
 		
 		ResultSet rs_FINAL = dbmd.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);
@@ -428,7 +516,7 @@ public class TestOpenCsvJar {
 		/** the built "CREATE TABLE STAGING_TABLE..." string */
 	    
 		/** remove trailing ','  TODO CLEAN UP WITH StringUtils.join()  */
-	    int lastTick = destTableStr.lastIndexOf(",");
+	    lastTick = destTableStr.lastIndexOf(",");
 	    destTableStr = destTableStr.substring(0, lastTick);
 	    String createStagingStmt = "CREATE TABLE " + dst_table_name + "\n(\n" + destTableStr + "\n);";
 		System.out.println(createStagingStmt); //TODO: LOGGING
@@ -488,91 +576,6 @@ public class TestOpenCsvJar {
 			MAPPING_MAP.put(key, value);
 			MAPPING_REV_MAP.put(value, key);
 		}
-	    
-	    
-	    /************************************************ 
-	     * build reusable 'INSERT INTO CLEANSING_TABLE'
-	     ************************************************
-	     * SQL: "INSERT INTO SRC_TABLE..."
-	     * Example SQL: "INSERT INTO src_table_name VALUES (?, ?, ?, ?, ?,...)"
-	     * data will be inserted as text sql-datatype
-	     *  
-	     */
-	    
-	    String insertStmt_src = "INSERT INTO " + src_table_name + " VALUES (";
-	    
-	    for (int h=0; h < header_src.length; h++){
-	    	insertStmt_src = insertStmt_src + "?,"; 
-	    }
-	    
-    	/***
-    	 * MS Access specific 
-    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
-    	 * Edit this in SQL view.
-    	 * 
-    	 * (this is for the "etl_flag" column that was added after table creation
-    	 */
-    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess)){
-    		insertStmt_src = insertStmt_src + "?,"; 
-    	}
-    	
-	    /** remove trailing ','  TODO CLEAN UP WITH StringUtils.join() */
-    	lastTick = insertStmt_src.lastIndexOf(",");
-    	insertStmt_src = insertStmt_src.substring(0, lastTick);
-    	insertStmt_src += ");";
-    	
-    	System.out.println("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
-    	PreparedStatement ps_INSERT_CLEANSE = c.prepareStatement(insertStmt_src);
-	    	
-    	/** set values for the ? parameters, NOTE all values have text sql-datatype */
-	    for (int e=0; e < entries_rawdata.size(); e++){
-	    	String[] entry = entries_rawdata.get(e);
-	    	String log_insertStmt = "VALUES:"; //TODO: LOGGING
-	    	
-	    	for (int p=0; p < entry.length; p++){
-	    		ps_INSERT_CLEANSE.setString(p+1, entry[p]);
-	    		log_insertStmt += "'" + entry[p] + "',"; 
-	    	}
-	    	
-	    	/***
-	    	 * MS Access specific 
-	    	 * 2351 - Microsoft Access can't represent an implicit VALUES clause in the query design grid. 
-	    	 * Edit this in SQL view.
-	    	 * 
-	    	 */
-	    	if (tocj.dbms.equals(TestOpenCsvJar.dbid_msaccess)){
-	    		ps_INSERT_CLEANSE.setString(entry.length + 1, "no flag");
-	    		log_insertStmt += "'no flag'"; 
-	    	}
-	    	
-	    	System.out.println("ETL_LOGGER:(ps_INSERT_CLEANSE)= " + ps_INSERT_CLEANSE.toString());
-	    	System.out.println("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
-	    	try {
-	    		ps_INSERT_CLEANSE.execute();
-	    	} catch (Exception e1){
-	    		
-	    	}
-	    }
-	    
-	    /** TODO
-	     * 
-	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	     * INJECT THE CUSTOM SQL AGAINST THE CLEANSE TABLE HERE
-	     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	     * 
-	     * */
-    	Properties customCleanseSqlprops = tocj.props_customsql_cleanse;
-    	int numSql = customCleanseSqlprops.size();
-    	for (int i = 1; i <= numSql; i++){
-    		String sql = customCleanseSqlprops.getProperty(String.valueOf(i));
-    		sql = sql.replace("$table", src_table_name);
-    		System.out.println("CUSTOM SQL: " + sql);
-    		PreparedStatement ps = c.prepareStatement(sql);
-    		ps.execute();
-    	}
-    	
-	    
-
 /*		
 		Map<String, String> MAPPING_MAP2 = new LinkedHashMap<String,String>(){{
 			put("col_districtid","dis3");
