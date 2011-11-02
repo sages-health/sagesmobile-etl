@@ -18,32 +18,56 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.log4j.Logger;
 import org.jhuapl.edu.sages.etl.ConnectionFactory;
 import org.jhuapl.edu.sages.etl.ETLProperties;
+import org.jhuapl.edu.sages.etl.PropertiesLoader;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
-import org.jhuapl.edu.sages.etl.oldstuff.TestOpenCsvJar;
 import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 
 /**
+ * {@link SagesOpenCsvJar} is the domain class and controls the execution of the overall ETL process. \
+ * It contains an {@link ETLStrategy} object that implements most of the ETL processing logic.
+ *  
  * @author POKUAM1
  * @created Nov 1, 2011
  */
 public abstract class SagesOpenCsvJar {
 
+	private static org.apache.log4j.Logger log = Logger.getLogger(SagesOpenCsvJar.class);
+	
+	/** The {@link ETLStrategy} object **/
 	protected ETLStrategy etlStrategy;
 	
+	/** List of files that ETL loads into the production table **/
 	protected File[] csvFiles;
+	
+	/** The current file that is being processed **/
 	protected File currentFile;
-	protected File fileMarkedForDeletion;
+	
+	/** Current file records that the ETL will load into the production table via SQL statements **/
 	protected ArrayList<String[]> currentEntries;
-	protected int currentRecNum;
-	protected static List<File> failedCsvFiles;
+
+	/** Flag used to determine whether a file should be moved to directory that signifies successful processing **/
 	protected boolean success;
+	
+	/** TODO: not used yet. The current file marked for deletion due to an error in processing **/
+	protected File fileMarkedForDeletion;
+	
+	
+	/** TODO: not used yet **/
+	protected int currentRecNum;
+	
+	/** TODO: not used yet. List of files ETL encountered failure while processing **/
+	protected static List<File> failedCsvFiles;
 	
 	
 	/** csv files are loaded from inputdir and moved to outputdir after being processed successfully  */
+	/** ETL looks at the input directory for files to process **/
 	protected String inputdir_csvfiles;
+	/** ETL moves successfully processed files to the output directory **/
 	protected String outputdir_csvfiles;
+	/** ETL moves unsucessfully processed files to the failed directory **/
 	protected String faileddir_csvfiles;
 	
 	protected static final String ETL_CLEANSE_TABLE = "ETL_CLEANSE_TABLE";
@@ -51,11 +75,12 @@ public abstract class SagesOpenCsvJar {
 	protected String src_table_name;
 	protected String dst_table_name;
 	protected String prod_table_name;
+	
 	/** maps the destination columns to their sql-datatype qualifier for generating the schema */
 	protected Map<String,String> DEST_COLTYPE_MAP;
 	
-	/** maps the destination columns to their java.sql.Types for setting ? parameters on prepared statements */
 	//http://download.oracle.com/javase/6/docs/api/constant-values.html#java.sql.Types.TIME
+	/** maps the destination columns to their java.sql.Types for setting ? parameters on prepared statements */
 	protected Map<String, Integer> DEST_SQLTYPE_MAP;
 	
 	/** maps the source:destination columns*/
@@ -97,9 +122,9 @@ public abstract class SagesOpenCsvJar {
 	 */
 	public SagesOpenCsvJar() throws SagesEtlException{
 		super();
-		ETLProperties etlProperties = new ETLProperties();
+		PropertiesLoader etlProperties = new ETLProperties();
 		etlProperties.loadEtlProperties();
-		initializeProperties(etlProperties);
+		initializeProperties((ETLProperties) etlProperties);
 	}
 	
 	public void setEtlStrategy (ETLStrategy strategy){
@@ -110,6 +135,9 @@ public abstract class SagesOpenCsvJar {
 		etlStrategy.extractHeaderColumns(socj);
 	};
 	
+	String[] determineHeaderColumns(File file) throws FileNotFoundException, IOException{
+		return etlStrategy.determineHeaderColumns(file);
+	};
 
 	public Savepoint buildCleanseTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException,SagesEtlException{
 		return etlStrategy.buildCleanseTable(c, socj, save1);
@@ -130,48 +158,28 @@ public abstract class SagesOpenCsvJar {
 			PreparedStatement ps_INSERT_CLEANSE) throws SQLException {
 		etlStrategy.setAndExecuteInsertIntoCleansingTablePreparedStatement(c, socj, entries_rawdata, save2, ps_INSERT_CLEANSE);
 	}
-	public void generateSourceDestMappings(TestOpenCsvJar tocj){
-		etlStrategy.generateSourceDestMappings(tocj);
-	}
 	
     public String buildInsertIntoCleansingTableSql(Connection c, SagesOpenCsvJar socj) throws SQLException {
 		return etlStrategy.buildInsertIntoCleansingTableSql(c, socj);
 	}
 
-	public void copyFromCleanseToStaging(Connection c, SagesOpenCsvJar socj, Savepoint save2) throws SQLException {
+	public void copyFromCleanseToStaging(Connection c, SagesOpenCsvJar socj, Savepoint save2) throws SQLException, SagesEtlException {
 		etlStrategy.copyFromCleanseToStaging(c, socj, save2);
 	}
 	
-	public int errorCleanup(Savepoint savepoint, Connection connection, File currentCsv, String failedDirPath, Exception e){
-		return etlStrategy.errorCleanup(savepoint, connection, currentCsv, failedDirPath, e);
+	public int errorCleanup(SagesOpenCsvJar socj, Savepoint savepoint, Connection connection, File currentCsv, String failedDirPath, Exception e){
+		return etlStrategy.errorCleanup(socj, savepoint, connection, currentCsv, failedDirPath, e);
 	}
-	/********ORIGINAL ONES FOR TOCJ BELOW 
-	 * @throws IOException 
-	 * @throws FileNotFoundException ************/
-	void extractHeaderColumns(TestOpenCsvJar tocj) throws FileNotFoundException, IOException{
-		etlStrategy.extractHeaderColumns(tocj);
-	};
-	
-	String[] determineHeaderColumns(File file) throws FileNotFoundException, IOException{
-		return etlStrategy.determineHeaderColumns(file);
-	};
 	
 	String addFlagColumn(String tableToModify){
 		return etlStrategy.addFlagColumn(tableToModify);
 	};
 	
-	Savepoint buildCleanseTable(Connection c, TestOpenCsvJar tocj, Savepoint save1) throws SQLException,SagesEtlException{
-		return etlStrategy.buildCleanseTable(c, tocj, save1);
-	};
-	
+
 	public void alterCleanseTableAddFlagColumn(Connection c, Savepoint save1, Savepoint createCleanseSavepoint) throws SQLException, SagesEtlException{
 		etlStrategy.alterCleanseTableAddFlagColumn(c, save1, createCleanseSavepoint);
 	};
-	
-	public void buildStagingTable(Connection c, TestOpenCsvJar tocj, Savepoint save1) throws SQLException, SagesEtlException{
-		etlStrategy.buildStagingTable(c, tocj, save1);
-	};
-	
+
 	public void alterStagingTableAddFlagColumn(Connection c, Savepoint save1, Savepoint createCleanseSavepoint) throws SQLException, SagesEtlException{
 		etlStrategy.alterStagingTableAddFlagColumn(c, save1, createCleanseSavepoint);
 	}
@@ -182,8 +190,10 @@ public abstract class SagesOpenCsvJar {
 	/** Protected and helper methods **/ 
 
 	/**
-	 * @param etlProperties
-	 * @throws SagesEtlException
+	 * Initializes the {@link SagesOpenCsvJar}' s etl properties
+	 * 
+	 * @param etlProperties - these are configured by updating the set of ETL properties files
+	 * @throws SagesEtlException - if property doesn't exist, or issue loading properties file occurs
 	 */
 	protected void initializeProperties(ETLProperties etlProperties) throws SagesEtlException {
 		this.props_etlconfig = etlProperties.getProps_etlconfig();
@@ -235,6 +245,24 @@ public abstract class SagesOpenCsvJar {
 	}
 
 	/**
+	 * @param socj_dumb
+	 * @param c
+	 * @throws SQLException
+	 */
+	protected static void runCustomSql(Connection c, Properties customSql, String targetTableName) throws SQLException {
+		//Properties customCleanseSqlprops = socj_dumb.props_customsql_cleanse;
+		Properties customCleanseSqlprops = customSql;
+		int numSql = customCleanseSqlprops.size();
+		for (int i = 1; i <= numSql; i++) {
+			String sql = customCleanseSqlprops.getProperty(String.valueOf(i));
+			sql = sql.replace("$table", targetTableName);
+			log.debug("CUSTOM SQL: " + sql);
+			PreparedStatement ps = c.prepareStatement(sql);
+			ps.execute();
+		}
+	}
+	
+	/**
 	 * returns a SagesEtlException that wraps the original exception	
 	 * @param msg SAGES ETL message to display
 	 * @param e the original exception
@@ -243,8 +271,5 @@ public abstract class SagesOpenCsvJar {
 	public static SagesEtlException abort(String msg, Throwable e){
 		return new SagesEtlException(e.getMessage(), e);
 	}
-
-	public String getFaileddir_csvfiles() {
-		return faileddir_csvfiles;
-	} 
+	
 }

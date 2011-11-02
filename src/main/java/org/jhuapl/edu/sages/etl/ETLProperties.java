@@ -34,8 +34,10 @@ public class ETLProperties implements PropertiesLoader {
 	private String userName;
 	private String password;
 	
+	/**
+	 * {@link ETLProperties} Constructor
+	 */
 	public ETLProperties(){
-		
 	}
 
 

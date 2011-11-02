@@ -24,31 +24,49 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 import org.jhuapl.edu.sages.etl.ETLProperties;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
-import org.jhuapl.edu.sages.etl.oldstuff.TestOpenCsvJar;
 import org.postgresql.util.PSQLException;
 
 import au.com.bytecode.opencsv.CSVReader;
 
 /**
+ * {@link ETLPostgresqlStrategy} is the Postgresql specific strategy for the ETL processing logic. 
+ * Transaction handling, SQL syntax nuances, and error codes are for Postgresql.
  * @author POKUAM1
  * @created Nov 1, 2011
  */
 public class ETLPostgresqlStrategy implements ETLStrategy {
-	private TestOpenCsvJar m_tocj;
+	private static final Logger log = Logger.getLogger(ETLPostgresqlStrategy.class);
+	public static final Map<String, String> errorcodes = new HashMap<String, String>(){{
+
+		put("CODE", "CODE");
+	}};
+	
+	public static final Set<String> ignorableErrorCodes = new HashSet<String>(){{
+		
+		// "42P07": relation "oevisit_etl_cleanse_table" already exists
+		// "42P07": relation "oevisit_etl_staging_db" already exists
+		add("42P07");
+		
+		//add("25P02"); // column "etl_flag" of relation "oevisit_etl_staging_db" already exists
+		
+		// "42701": column "etl_flag" of relation "oevisit_etl_cleanse_table" already exists
+		// "42701": column "etl_flag" of relation "oevisit_etl_staging_db" already exists
+		add("42701"); 
+		add("CODE");
+		add("CODE");
+	}};
 	private SagesOpenCsvJar m_socj;
 	
 	public ETLPostgresqlStrategy(SagesOpenCsvJar socj){
 		m_socj = socj;
-	}
-
-	public ETLPostgresqlStrategy(TestOpenCsvJar tocj){
-		m_tocj = tocj;
 	}
 
 	public ETLPostgresqlStrategy(){
@@ -56,29 +74,14 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	}
 	
 	/* (non-Javadoc)
-	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#extractHeaderColumns(org.jhuapl.edu.sages.etl.TestOpenCsvJar)
-	 */
-	@Override
-	public void extractHeaderColumns(TestOpenCsvJar tocj) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#determineHeaderColumns(java.io.File)
-	 */
-	/**
-	 * @param master_entries_rawdata
-	 * @param file
-	 * @throws FileNotFoundException
-	 * @throws IOException
 	 */
 	@Override
 	public String[] determineHeaderColumns(File file)throws FileNotFoundException, IOException {
-		CSVReader reader_rawdata2 = new CSVReader(new FileReader(file));
-		ArrayList<String[]> currentEntries = (ArrayList<String[]>) reader_rawdata2.readAll();
+		CSVReader reader_rawdata = new CSVReader(new FileReader(file));
+		ArrayList<String[]> currentEntries = (ArrayList<String[]>) reader_rawdata.readAll();
 		String[] headerColumns = currentEntries.get(0); /** set header from the first csv file */
-		reader_rawdata2.close();
+		reader_rawdata.close();
 		//currentEntries.remove(0); /** remove the header row */
 		//master_entries_rawdata.addAll(currentEntries);
 		return headerColumns;
@@ -95,81 +98,45 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	}
 
 	/* (non-Javadoc)
-	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#buildCleanseTable(java.sql.Connection, org.jhuapl.edu.sages.etl.TestOpenCsvJar, java.sql.Savepoint)
-	 */
-	@Override
-	public Savepoint buildCleanseTable(Connection c, TestOpenCsvJar tocj,
-			Savepoint save1) throws SQLException, SagesEtlException {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#alterCleanseTableAddFlagColumn(java.sql.Connection, java.sql.Savepoint, java.sql.Savepoint)
 	 */
-	/**
-	 * @param c
-	 * @param save1
-	 * @param createCleanseSavepoint
-	 * @throws SQLException
-	 * @throws SagesEtlException
-	 */
 	@Override
-	public void alterCleanseTableAddFlagColumn(Connection c,			
-			Savepoint save1, Savepoint createCleanseSavepoint)
+	public void alterCleanseTableAddFlagColumn(Connection c, Savepoint save1, Savepoint createCleanseSavepoint)
 			throws SQLException, SagesEtlException {
-		// TODO Auto-generated method stub
 		String sqlaltertableAddColumn = addFlagColumn(m_socj.src_table_name);
 	    PreparedStatement PS_addcolumn_Flag = c.prepareStatement(sqlaltertableAddColumn);
-	    System.out.println("ALTER STATEMENT: " + sqlaltertableAddColumn);
-	    //TODO catch that column already exists
+	    log.info("ALTER STATEMENT: " + sqlaltertableAddColumn);
+
 	    try {
 	    	PS_addcolumn_Flag.execute();
 	    } catch (PSQLException e){
-	    	if ("25P02".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER(ignored but rolling back to "+ createCleanseSavepoint.getSavepointName() + "):" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
-	    		c.rollback(createCleanseSavepoint);
-	    	}else if ("42701".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER(ignored):" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
-	    		c.rollback(createCleanseSavepoint);
+	    	if (ignorableErrorCodes.contains(e.getSQLState())){
+	    		/** catches that 'etl_flag' column already exists **/
+	    		/** known error. we can ignore & recover. **/
+	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
+	    		c.rollback(createCleanseSavepoint);	    		
 	    	} else {
-	    		errorCleanup(save1, c, null, m_socj.faileddir_csvfiles, e);
-	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
+	    		/** unknown error. bad. must abort. **/
+	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, m_socj.faileddir_csvfiles, e);
 	    	}
+
 	    } catch (SQLException e){ //TODO MS Access specific
 	    	if ("S0021".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
-	    		errorCleanup(save1, c, null, m_socj.faileddir_csvfiles, e);
+	    		errorCleanup(m_socj, save1, c, null, m_socj.faileddir_csvfiles, e);
 	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
-	    	errorCleanup(save1, c, null,  m_socj.faileddir_csvfiles, e);
+	    	errorCleanup(m_socj, save1, c, null,  m_socj.faileddir_csvfiles, e);
 	    	throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    }
 	}
 
 	
 	/* (non-Javadoc)
-	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#buildStagingTable(java.sql.Connection, org.jhuapl.edu.sages.etl.TestOpenCsvJar, java.sql.Savepoint)
-	 */
-	@Override
-	public void buildStagingTable(Connection c, TestOpenCsvJar tocj,
-			Savepoint save1) throws SQLException, SagesEtlException {
-		// TODO Auto-generated method stub
-		
-	}
-
-	
-	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#alterStagingTableAddFlagColumn(java.sql.Connection, java.sql.Savepoint, java.sql.Savepoint)
-	 */
-	/**
-	 * @param c
-	 * @param save1
-	 * @param createCleanseSavepoint
-	 * @throws SQLException
-	 * @throws SagesEtlException
 	 */
 	@Override
 	public void alterStagingTableAddFlagColumn(Connection c, Savepoint save1,
@@ -180,98 +147,70 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		PreparedStatement PS_addcolumn_Flag;
 		sqlaltertableAddColumn = addFlagColumn(m_socj.dst_table_name);
 	    PS_addcolumn_Flag = c.prepareStatement(sqlaltertableAddColumn);
-	    System.out.println("ALTER STATEMENT: " + sqlaltertableAddColumn);
+	    log.debug("ALTER STATEMENT: " + sqlaltertableAddColumn);
 	    try {
 	    	PS_addcolumn_Flag.execute();
 	    } catch (PSQLException e){
-	    	/** catch that column already exists. that is OK */
-	    	if ("42701".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
-	    		c.rollback(createCleanseSavepoint);
+	    	if (ignorableErrorCodes.contains(e.getSQLState())){
+	    		/** catches that 'etl_flag' column already exists. known error we can ignore & recover. **/
+	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
+	    		c.rollback(createCleanseSavepoint);	    		
 	    	} else {
-	    		errorCleanup(save1, c, null, m_socj.faileddir_csvfiles, e);
-	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_STAGING_DB.", e); 
+	    		/** unknown error. bad. must abort. **/
+	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, m_socj.faileddir_csvfiles, e);
 	    	}
 	    } catch (SQLException e){ //TODO MS Access specific
 	    	if ("S0021".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
-	    		errorCleanup(save1, c, null, m_socj.faileddir_csvfiles, e);
+	    		errorCleanup(m_socj, save1, c, null, m_socj.faileddir_csvfiles, e);
 	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
-	    	errorCleanup(save1, c, null, m_socj.faileddir_csvfiles, e);
+	    	errorCleanup(m_socj, save1, c, null, m_socj.faileddir_csvfiles, e);
 	    	throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to add column etl_flag to ETL_STAGING_DB.", e); 
 	    }
 	}
 
 	/* (non-Javadoc)
-	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#generateSourceDestMappings(org.jhuapl.edu.sages.etl.TestOpenCsvJar)
-	 */
-	@Override
-	public void generateSourceDestMappings(TestOpenCsvJar tocj) {
-		// TODO Auto-generated method stub
-		
-	}
-	
-	/********ORIGINALS ABOVE, DOWN IS SOCJ STUFF *******************/
-
-	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#extractHeaderColumns(org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar)
-	 */
-	/**
-	 * @param tocj
-	 * @return
-	 * @throws FileNotFoundException
-	 * @throws IOException
 	 */
 	@Override
 	public void extractHeaderColumns(SagesOpenCsvJar socj) throws FileNotFoundException, IOException {
 		/** header columns used to define the CLEANSE table schema */
 		socj.header_src = new String[0];
-		//failedCsvFiles = new ArrayList<File>();
-		//File[] readCsvFiles = new File[0];
 		
 		/** determine header columns **/
 		File csvinputDir = new File(socj.inputdir_csvfiles);
 		if (csvinputDir.isDirectory()){
 			socj.csvFiles = csvinputDir.listFiles();
 			if (socj.csvFiles.length == 0){
-				System.out.println("Nothing to load into database. Exiting."); //TODO: LOGGING explain this happens
+				log.info("Input directory has no files. Nothing to load into database. Exiting.");
 				System.exit(0); 
 			} 
 			socj.header_src = determineHeaderColumns(socj.csvFiles[0]);
 		} else {
-			System.out.println(csvinputDir.getName() + "is not valid csv input directory. Exiting."); //TODO: LOGGING explain this happens
-			System.exit(0); 	
+			log.fatal(csvinputDir.getName() + "is not valid csv input directory. Exiting.");
+			System.exit(-1); 	
 		}
-		//return readCsvFiles;
-		
 	}
 
 	
 	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#buildCleanseTable(java.sql.Connection, org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar, java.sql.Savepoint)
 	 */
-	/**
-	 * @param c
-	 * @param tocj
-	 * @param save1
-	 * @return
-	 * @throws SQLException
-	 * @throws SagesEtlException
-	 */
 	@Override
+	/*********************************** 
+     * build ETL_CLEANSE_TABLE 
+     ***********************************
+     * SQL: "CREATE TABLE..." 
+     * - all columns have text sql-datatype
+     * - column definitions built from csv file header 
+     ****************************/
 	public Savepoint buildCleanseTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SagesEtlException, SQLException {
-		/*********************************** 
-	     * build ETL_CLEANSE_TABLE 
-	     ***********************************
-	     * SQL: "CREATE TABLE..." 
-	     * - all columns have text sql-datatype
-	     * - column definitions built from csv file header 
-	     ****************************/
 	     //http://postgresql.1045698.n5.nabble.com/25P02-current-transaction-is-aborted-commands-ignored-until-end-of-transaction-block-td2174290.html
-		socj.src_table_name = socj.props_etlconfig.getProperty("dbprefix_src") + "_" + socj.ETL_CLEANSE_TABLE;
+		socj.src_table_name = socj.props_etlconfig.getProperty("dbprefix_src") + "_" + SagesOpenCsvJar.ETL_CLEANSE_TABLE;
 	    String createStmt_src = "CREATE TABLE " + socj.src_table_name + " \n(\n";
 	    
 	    /**
@@ -287,49 +226,42 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    	zsrc++;
 	    }
 	   
-	    /**remove trailing ',' TODO CLEAN UP WITH StringUtils.join() */
-	    int lastComma = createStmt_src.lastIndexOf(",\n");
-	    createStmt_src = createStmt_src.substring(0, lastComma);
-	    createStmt_src += "\n);";
+	    /**remove trailing ',' **/
+	    createStmt_src = StringUtils.substringBeforeLast(createStmt_src, ",\n") + "\n);";
 	    
-	    System.out.println("ETL_LOGGER\ncreatestmt:\n" + createStmt_src); //TODO: LOGGING
+	    log.info("\ncreatestmt:\n" + createStmt_src);
 	    PreparedStatement PS_create_CLEANSE = c.prepareStatement(createStmt_src);
 	    
 	    Savepoint createCleanseSavepoint = c.setSavepoint("createCleanseSavepoint");
 	    try {
 	    	PS_create_CLEANSE.execute(); //TODO: pgadmin wanted a pk for me to edit thru gui
 	    } catch (PSQLException e){ //TODO: make this generic for SQLException
-	    	if ("42P07".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    	if (ignorableErrorCodes.contains(e.getSQLState())){
+	    		/** known error. we can ignore & recover. **/
+	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    		c.rollback(createCleanseSavepoint);
+	    		
 	    	} else {
-	    		errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
-	    		throw socj.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
+	    		/** unknown error. bad. must abort. **/
+	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
 	    	}
 	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
 	    	if ("S0001".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
-	    		errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
-	    		throw socj.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
+	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
-	    	errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
-	    	throw socj.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
+	    	errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
+	    	throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    }
 		return createCleanseSavepoint;
 	}
 	
 	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#buildStagingTable(java.sql.Connection, org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar, java.sql.Savepoint)
-	 */
-	/**
-	 * @param c
-	 * @param tocj
-	 * @param save1
-	 * @return Savepoint
-	 * @throws SQLException
-	 * @throws SagesEtlException
 	 */
 	@Override
 	public Savepoint buildStagingTable(Connection c, SagesOpenCsvJar socj,
@@ -348,13 +280,13 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		String catalog = null;
 		String schemaPattern = null;
 		//String tableNamePattern = "etl_individual";
-		String tableNamePattern = socj.props_etlconfig.getProperty("tableNamePattern"); //TODO rename this
+		String tableNamePattern = socj.props_etlconfig.getProperty("productionTableName");
 		String columnNamePattern = null;
 		
 		ResultSet rs_FINAL = dbmd.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);
 
 		String destTableStr = "";
-		socj.dst_table_name = socj.props_etlconfig.getProperty("dbprefix_dst") + "_" + socj.ETL_STAGING_DB;
+		socj.dst_table_name = socj.props_etlconfig.getProperty("dbprefix_dst") + "_" + SagesOpenCsvJar.ETL_STAGING_DB;
 		socj.DEST_COLTYPE_MAP = new LinkedHashMap<String, String>();
 		socj.DEST_SQLTYPE_MAP = new LinkedHashMap<String, Integer>();
 		int zdst=1;
@@ -369,7 +301,7 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		while (rs_FINAL.next()){
 			/**http://stackoverflow.com/questions/1870022/java-resultset-hasnext
 			//http://www.herongyang.com/JDBC/sqljdbc-jar-Column-List.html */
-			//System.out.println("column check");
+			//log.debug("column check");
 			String colName = rs_FINAL.getString("COLUMN_NAME");
 			String colType = rs_FINAL.getString("TYPE_NAME");
 			int colSqlType = rs_FINAL.getInt("DATA_TYPE");
@@ -378,7 +310,7 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 				isAutoInc = rs_FINAL.getString("IS_AUTOINCREMENT");  /**YES, NO, or "" */
 			} catch (SQLException e) {
 				if ("S0022".equals(e.getSQLState())){ // MS Access specific
-					System.out.println("ETL_LOGGER:" + "this database does not support IS_AUTOINCREMENT result meta data column. safe to ignore");
+					log.debug("ETL_LOGGER:" + "this database does not support IS_AUTOINCREMENT result meta data column. safe to ignore");
 				}
 			}
 			if ("serial".equalsIgnoreCase(colType) || "COUNTER".equalsIgnoreCase(colType)|| "YES".equalsIgnoreCase(isAutoInc)) {
@@ -388,7 +320,7 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 			String colDef = colName + " " + colType + ",";
 			destTableStr += colDef + "\n";
 
-			System.out.println(colName + "=" + colType + "("+ colSqlType + ")"); //TODO: LOGGING
+			log.debug(colName + "=" + colType + "("+ colSqlType + ")"); //TODO: LOGGING
 			/** TODO: make sure using this staging table map <colName:colType>  **/
 			socj.DEST_COLTYPE_MAP.put(colName, colType);
 			socj.DEST_SQLTYPE_MAP.put(colName, colSqlType);
@@ -398,11 +330,11 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		
 		/** the built "CREATE TABLE STAGING_TABLE..." string */
 	    Savepoint createStagingSavepoint = c.setSavepoint("createStagingSavePoint");
-		/** remove trailing ','  TODO CLEAN UP WITH StringUtils.join()  */
-	    int lastTick = destTableStr.lastIndexOf(",");
-	    destTableStr = destTableStr.substring(0, lastTick);
+		/** remove trailing ','  **/
+	    destTableStr = StringUtils.substringBeforeLast(destTableStr, ",");
+
 	    String createStagingStmt = "CREATE TABLE " + socj.dst_table_name + "\n(\n" + destTableStr + "\n);";
-		System.out.println(createStagingStmt); //TODO: LOGGING
+		log.info(createStagingStmt);
 		
 		PreparedStatement ps_CREATE_STAGING = c.prepareStatement(createStagingStmt);
 		
@@ -410,22 +342,24 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 			/** execute CREATE STAGING_TABLE sql */
 			ps_CREATE_STAGING.execute();
 		} catch (PSQLException e){ //TODO: make this generic for SQLException
-	    	if ("42P07".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:(ignored)" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
-	    		c.rollback(createStagingSavepoint);
+	    	if (ignorableErrorCodes.contains(e.getSQLState())){
+	    		/** known error. we can ignore & recover. **/
+	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
+	    		c.rollback(createStagingSavepoint);	    		
 	    	} else {
-	    		errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
-	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_STAGING_DB.", e); 
+	    		/** unknown error. bad. must abort. **/
+	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
 	    	}
 	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
 	    	if ("S0001".equals(e.getSQLState())){
-	    		System.out.println("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
 	    	} else {
-	    		errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
+	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
 	    		throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    	}
 	    } catch (Exception e) {
-	    	errorCleanup(save1, c, null, socj.faileddir_csvfiles, e);
+	    	errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
 	    	throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_STAGING_DB.", e); 
 	    }
 		return createStagingSavepoint; 
@@ -434,9 +368,6 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	
 	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#generateSourceDestMappings(org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar)
-	 */
-	/**
-	 * @param socj
 	 */
 	@Override
 	public void generateSourceDestMappings(SagesOpenCsvJar socj) {
@@ -451,12 +382,7 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		}		
 	}
 	
-	/**
-	 * @param c
-	 * @param socj
-	 * @return
-	 * @throws SQLException
-	 */
+	@Override
 	public String buildInsertIntoCleansingTableSql(Connection c, SagesOpenCsvJar socj) throws SQLException {
 	    /************************************************ 
 	     * build reusable 'INSERT INTO CLEANSING_TABLE'
@@ -486,22 +412,14 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
     	}
     	
 	    /** remove trailing ','  TODO CLEAN UP WITH StringUtils.join() */
-    	lastTick = insertStmt_src.lastIndexOf(",");
-    	insertStmt_src = insertStmt_src.substring(0, lastTick);
-    	insertStmt_src += ");";
     	
-    	System.out.println("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
+    	insertStmt_src = StringUtils.substringBeforeLast(insertStmt_src, ",") + ");";
+    	
+    	log.debug("ETL_LOGGER\ninsertstmt_src: " + insertStmt_src); //TODO: LOGGING
     	return insertStmt_src;
 	}
 
-	/**
-	 * @param c
-	 * @param socj
-	 * @param entries_rawdata
-	 * @param save2
-	 * @param ps_INSERT_CLEANSE
-	 * @throws SQLException
-	 */
+	@Override
 	public void setAndExecuteInsertIntoCleansingTablePreparedStatement(
 			Connection c, SagesOpenCsvJar socj, ArrayList<String[]> entries_rawdata, Savepoint save2,
 			PreparedStatement ps_INSERT_CLEANSE) throws SQLException {
@@ -527,25 +445,20 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    		log_insertStmt += "'no flag'"; 
 	    	}
 	    	
-	    	System.out.println("ETL_LOGGER:(ps_INSERT_CLEANSE)= " + ps_INSERT_CLEANSE.toString());
-	    	System.out.println("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
+	    	log.debug("ETL_LOGGER:(ps_INSERT_CLEANSE)= " + ps_INSERT_CLEANSE.toString());
+	    	log.debug("ETL_LOGGER: " + log_insertStmt); //TODO: LOGGING
 	    	try {
 	    		ps_INSERT_CLEANSE.execute();
 	    	} catch (Exception e1){
-	    		if(errorCleanup(save2, c, null, socj.faileddir_csvfiles, e1) == 2){
+	    		if(errorCleanup(m_socj, save2, c, socj.currentFile, socj.faileddir_csvfiles, e1) == 2){
 	    			break;
 	    		}
 	    	}
 	    }
 	}
 
-	/**
-	 * @param c
-	 * @param tocj
-	 * @param save2
-	 * @throws SQLException
-	 */
-	public void copyFromCleanseToStaging(Connection c, SagesOpenCsvJar socj, Savepoint save2) throws SQLException {
+	@Override
+	public void copyFromCleanseToStaging(Connection c, SagesOpenCsvJar socj, Savepoint save2) throws SQLException, SagesEtlException {
 		int lastComma;
 		int lastTick;
 		PreparedStatement ps_SELECT_CLEANSING = c.prepareStatement("SELECT * FROM " + socj.src_table_name);
@@ -561,11 +474,11 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		
 	      int numberOfColumns = rsmd.getColumnCount();
 	      for (int x=1; x < numberOfColumns ; x++){
-	    	  System.out.println("LABEL: " + rsmd.getColumnLabel(x) + ", TYPE: " + rsmd.getColumnTypeName(x));
+	    	  log.debug("LABEL: " + rsmd.getColumnLabel(x) + ", TYPE: " + rsmd.getColumnTypeName(x));
 	    	  
 	      }
 	      for (Entry<String, String> dmap : socj.DEST_COLTYPE_MAP.entrySet()){
-	    	  System.out.println("LABEL: " + dmap.getKey() + ", TYPE: " + dmap.getValue());
+	    	  log.debug("LABEL: " + dmap.getKey() + ", TYPE: " + dmap.getValue());
 	      }
 	      
 		for (int m=0; m <rsmd.getColumnCount(); m++){
@@ -580,19 +493,17 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    	//createStmt += colHead + " " + sourceColTypeMap.get(colHead) + ",\n";
 	    	stagingColStmt += colHead + ",\n";
 	    }
-	    lastComma = stagingColStmt.lastIndexOf(",\n");
-	    stagingColStmt = stagingColStmt.substring(0, lastComma);
-	    stagingColStmt += "\n)";
+
+	    stagingColStmt = StringUtils.substringBeforeLast(stagingColStmt, ",\n") + "\n)";
 	    
 	    for (int h=0;h<rsColsHERE.length;h++){
 	    	stagingValuesStmt = stagingValuesStmt + "?,"; 
 	    }
-    	lastTick = stagingValuesStmt.lastIndexOf(",");
-    	stagingValuesStmt = stagingValuesStmt.substring(0, lastTick);
-    	stagingValuesStmt += ");";
+	    
+    	stagingValuesStmt = StringUtils.substringBeforeLast(stagingValuesStmt, ",") + ");";
     	stagingInsertStmt = stagingInsertStmt + stagingColStmt + stagingValuesStmt;
     	
-    	System.out.println("!!!!stagingInsertStmt!!!!: \n" + stagingInsertStmt);
+    	log.debug("!!!!stagingInsertStmt!!!!: \n" + stagingInsertStmt);
     	
     	/** Reusable Prepared Statement */
     	PreparedStatement ps_INSERT_STAGING = c.prepareStatement(stagingInsertStmt);
@@ -606,10 +517,10 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		int zIndx = -1;
 		for (int z = 0; z<z_colCount; z++){
 			String currentColName = rsmd2.getColumnLabel(z+1);
-			System.out.println("currentColName: " + currentColName);
+			log.debug("currentColName: " + currentColName);
 			if (socj.MAPPING_MAP.get(currentColName) != null){
 				String destColName = socj.MAPPING_MAP.get(currentColName);
-				System.out.println("destColName: " + destColName);
+				log.debug("destColName: " + destColName);
 				zIndx = alist.indexOf(destColName);
 				z_indexMap.put(destColName, new Integer(zIndx));
 			}
@@ -621,20 +532,22 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    		Set<Integer> masterindices_dst = new HashSet<Integer>(socj.PARAMINDX_DST.values());
 	    		
 	    		for (Entry<String,Integer> z_indexEntry: z_indexMap.entrySet()){
+	    			
 	    			//String currentColName = rs_SELECT_CLEANSING.
 	    			//if (!MAPPING_MAP.containsKey(currentColName)) continue;
 	    			String destColName = z_indexEntry.getKey();
 	    			String sourcColName = socj.MAPPING_REV_MAP.get(destColName);
-	    			System.out.println("destcolNAME: "  + destColName);
+	    			log.debug("destcolNAME: "  + destColName);
 	    			Integer destIndx = z_indexEntry.getValue();
-	    			System.out.println("destINDX: " + destIndx); //TODO: verify this zIndex make sure it's right
-	    			Object VALUE = rs_SELECT_CLEANSING.getObject(sourcColName);
-					System.out.println("THE VALUE AWAITED: "  + VALUE);
+	    			log.debug("destINDX: " + destIndx); //TODO: verify this zIndex make sure it's right
+	    			Object VALUE = null;
+	    				VALUE = rs_SELECT_CLEANSING.getObject(sourcColName);
+					log.debug("THE VALUE AWAITED: "  + VALUE);
 					
 	    			Integer SQL_TYPE = socj.DEST_SQLTYPE_MAP.get(destColName);
 	    			if (SQL_TYPE == Types.DATE){
 	    				/** http://postgresql.1045698.n5.nabble.com/insert-from-a-select-td3279325.html */
-	    				System.out.println("date handling going on");
+	    				log.debug("date handling going on");
 	    				DateFormat formatter;
 	    				Date date;
 	    				String formatToUse = socj.props_dateformats.getProperty(sourcColName).trim(); //i.e. "yyyy-MM-dd HH:mm:ss"
@@ -642,22 +555,23 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    				try {
 							date = (Date)formatter.parse(VALUE.toString());
 							java.sql.Date sqlDate = new java.sql.Date(date.getTime());
-							System.out.println(sqlDate.toString());
+							log.debug(sqlDate.toString());
 							ps_INSERT_STAGING.setDate(socj.PARAMINDX_DST.get(destColName),sqlDate);
-							System.out.println("SET THE DATE STUFF-" + sqlDate);
+							log.debug("SET THE DATE STUFF-" + sqlDate);
 							masterindices_dst.remove(socj.PARAMINDX_DST.get(destColName));
 						} catch (ParseException e1) {
 							// TODO Auto-generated catch block
-							System.out.println("ERROR: Check your date pattern in the file dateformats.properties:\n\t" +
+							log.debug("ERROR: Check your date pattern in the file dateformats.properties:\n\t" +
 									sourcColName + "=" + socj.props_dateformats.getProperty(sourcColName) +"\n");
+							log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
 							e1.printStackTrace();
-							errorCleanup(save2, c, null, socj.faileddir_csvfiles, e1);
-							throw new SagesEtlException("Cannot proceed errors");
+							//errorCleanup(save2, c, socj.currentFile, socj.faileddir_csvfiles, e1);
+							throw new SagesEtlException(e1.getMessage(), e1);
 						}
 	    			} else {
 	//    				ps_INSERT_STAGING.setObject(destIndx+1, VALUE, SQL_TYPE);
 	    				ps_INSERT_STAGING.setObject(socj.PARAMINDX_DST.get(destColName), VALUE, SQL_TYPE);
-	    				System.out.println("SET NON DATE-"+ VALUE );
+	    				log.debug("SET NON DATE-"+ VALUE );
 	    				masterindices_dst.remove(socj.PARAMINDX_DST.get(destColName));
 	    			}
 	    		}
@@ -667,52 +581,64 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    			ps_INSERT_STAGING.setNull(nullparamindx, rsmd.getColumnType(nullparamindx));
 	    		}
 	    		//TODO: NEED THIS NOT HARDCODED TO 10--should be 1+ number of columns...
+	    		/** THIS IS FOR THE COLUMN ETL_FLAG **/
 	    		ps_INSERT_STAGING.setNull(socj.PARAMINDX_DST.size() + 1, Types.VARCHAR);
 	    		ps_INSERT_STAGING.executeUpdate();
 	    	}
+		}catch(SQLException se){
+			log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
+			throw  SagesOpenCsvJar.abort(se.getMessage(), se);
 		} catch (Exception e){
-			errorCleanup(save2, c, null, socj.faileddir_csvfiles, e);
-			System.out.println("ETL_LOGGER: error did occur for this file, but rolled back and proceeding.");
+			log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
+			throw  SagesOpenCsvJar.abort(e.getMessage(), e);
 		}
 	}
 	
-	public int errorCleanup(Savepoint savepoint, Connection connection, File currentCsv, String failedDirPath, Exception e){
+	@Override
+	public int errorCleanup(SagesOpenCsvJar socj, Savepoint savepoint, Connection connection, File currentCsv, String failedDirPath, Exception e){
     String savepointName = "";
+    socj.success = false;
     int errorFlag = 0;
 		try {
-			System.out.println("ERROR OCCURED THIS IS ERROR CLEANUP FOR exception:\n" + e.getMessage());
+			log.error("ERROR CLEANUP FOR EXCEPTION:\n" + e.getMessage());
+			e.printStackTrace();
 			savepointName = savepoint.getSavepointName();
 			connection.rollback(savepoint);
 			connection.commit();
-			//MOVE CURRENT CSV OVER TO FAILED
-			//WRITE TO LOG: FILE_X FAILED, FAILURE OCCURED AT STEP_X
+			
+			/** 
+			 * MOVE CURRENT CSV OVER TO FAILED, 
+			 * TODO: WRITE TO LOG: FILE_X FAILED, FAILURE OCCURED AT STEP_X **/
 			if (currentCsv != null) {
 				//failedCsvFiles.add(currentCsv);
 		    	Date date = new Date();
 		    	long dtime = date.getTime();
-		    	//** Destination dir *//*
+		    	
+		    	/** failure destination dir **/
 		    	File dir = new File(failedDirPath);
-		    	//** Move file to new dir *//*
+
+		    	/** Move file to new dir **/
 		    	FileUtils.copyFile(currentCsv, new File(dir, dtime + "_"+ currentCsv.getName()));
-		    	//boolean success = file.renameTo(new File(dir, dtime + "_"+ file.getName()));
-		    	Thread.sleep(2000);
 		    	FileUtils.forceDelete(currentCsv);
 			}
 		} catch(IOException io){
-			System.out.println("ugh: " + io.getMessage());
-		}catch (InterruptedException ie){
-			System.out.println("ugh: " + ie.getMessage());
-		}catch (SQLException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
+			log.error(io.getMessage());
+			//TODO throw Sages Exception?
+		} catch (SQLException e1) {
+			log.error(e1.getMessage());
+			//TODO throw Sages Exception?
 		} finally {
-			System.out.println("SYSTEM ROLLED BACK TO SAVEPOINT = " + savepointName);
+			log.error("SYSTEM ROLLED BACK TO SAVEPOINT = " + savepointName);
+			/** This is an error occurring with creating the stage and cleanse table. no recovery option. **/
 			if ("save1".equals(savepointName)){
 				errorFlag = 1;
+				log.fatal("This is an error occurring with creating the stage and cleanse table. no recovery option.");
 				System.exit(-1);
-			} if ("save2".equals(savepointName)){
+			} 
+			/** This is an error occurring with entering data. we attempt with next file **/
+			if ("save2".equals(savepointName)){
 				errorFlag = 2;
-			}
+			} 
 	}
 	 return errorFlag;	
 	}
