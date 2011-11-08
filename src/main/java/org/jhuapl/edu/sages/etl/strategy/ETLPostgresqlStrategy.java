@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ThreadPoolExecutor.AbortPolicy;
 import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
@@ -590,7 +591,13 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    				log.debug("date handling going on");
 	    				DateFormat formatter;
 	    				Date date;
-	    				String formatToUse = socj.props_dateformats.getProperty(sourcColName).trim(); //i.e. "yyyy-MM-dd HH:mm:ss"
+	    				String formatToUse = socj.props_dateformats.getProperty(sourcColName); //i.e. "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy"
+	    				if (formatToUse == null){
+	    					log.error("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files. Check dateformats.properties");
+	    					throw SagesOpenCsvJar.abort("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files: " + sourcColName, new NullPointerException());
+	    				} else {
+	    					formatToUse.trim();
+	    				}
 	    				formatter = new SimpleDateFormat(formatToUse);//grab configured date format
 	    				try {
 							date = (Date)formatter.parse(VALUE.toString());
