@@ -15,7 +15,14 @@
                 <include>*.properties</include>
                 <include>csvfilerepo/**</include>
                 <include>customsql/**</include>
+                <include>logs/**</include>
             </includes>
+            <excludes>
+            	<exclude>*.git</exclude>
+            	<exclude>*.classpath</exclude>
+            	<exclude>*.project</exclude>
+            	<exclude>*.settings</exclude>
+            </excludes>
         </fileSet>
         <fileSet>
             <directory>${project.build.directory}</directory>

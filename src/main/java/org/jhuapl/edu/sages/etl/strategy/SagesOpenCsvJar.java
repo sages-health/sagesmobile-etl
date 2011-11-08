@@ -10,9 +10,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Savepoint;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -35,9 +37,13 @@ import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 public abstract class SagesOpenCsvJar {
 
 	private static org.apache.log4j.Logger log = Logger.getLogger(SagesOpenCsvJar.class);
+	private static org.apache.log4j.Logger outcomeLog = Logger.getLogger("FileProcessingOutcome");
 	
 	/** The {@link ETLStrategy} object **/
 	protected ETLStrategy etlStrategy;
+	
+	/** The savepoints **/
+	protected Map<String, Savepoint> savepoints;
 	
 	/** List of files that ETL loads into the production table **/
 	protected File[] csvFiles;
@@ -125,6 +131,8 @@ public abstract class SagesOpenCsvJar {
 		PropertiesLoader etlProperties = new ETLProperties();
 		etlProperties.loadEtlProperties();
 		initializeProperties((ETLProperties) etlProperties);
+		failedCsvFiles = new ArrayList<File>();
+		savepoints = new LinkedHashMap<String, Savepoint>();
 	}
 	
 	public void setEtlStrategy (ETLStrategy strategy){
@@ -142,6 +150,11 @@ public abstract class SagesOpenCsvJar {
 	public Savepoint buildCleanseTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException,SagesEtlException{
 		return etlStrategy.buildCleanseTable(c, socj, save1);
 	};
+	
+	public void truncateCleanseAndStagingTables(DumbTestOpenCsvJar socj_dumb, Connection c, File file,
+			Savepoint groundZero) throws SagesEtlException, SQLException {
+		etlStrategy.truncateCleanseAndStagingTables(socj_dumb, c, file, groundZero);
+	}
 	
 	public Savepoint buildStagingTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException, SagesEtlException{
 		return etlStrategy.buildStagingTable(c, socj, save1);
@@ -187,7 +200,7 @@ public abstract class SagesOpenCsvJar {
 
 
 	
-	/** Protected and helper methods **/ 
+	/** Public/protected helper methods **/ 
 
 	/**
 	 * Initializes the {@link SagesOpenCsvJar}' s etl properties
@@ -235,13 +248,14 @@ public abstract class SagesOpenCsvJar {
 	 * @param destinationDir
 	 * @throws IOException
 	 */
-	protected static void etlMoveFile(File file, File destinationDir)throws IOException {
+	protected static File etlMoveFile(File file, File destinationDir)throws IOException {
 		Date date = new Date();
 		long dtime = date.getTime();
-
+		File newFileLocation = new File(destinationDir, dtime + "_"+ file.getName());
 		/** Move file to new dir */
-		FileUtils.copyFile(file, new File(destinationDir, dtime + "_"+ file.getName()));
+		FileUtils.copyFile(file, newFileLocation);
 		FileUtils.forceDelete(file);
+		return newFileLocation;
 	}
 
 	/**
@@ -261,7 +275,78 @@ public abstract class SagesOpenCsvJar {
 			ps.execute();
 		}
 	}
+	/**
+	 * @param socj TODO
+	 * @param c
+	 * @param outcome
+	 * @param sql
+	 * @param canonicalPath
+	 * @param fileName
+	 * @param processtime
+	 * @throws SagesEtlException 
+	 * @throws SQLException 
+	 */
+	public static void logFileOutcome(SagesOpenCsvJar socj, Connection c, File file, String outcome) throws SagesEtlException {
+		String sql = "INSERT INTO etl_status(filename,filepath,outcome,processtime) VALUES(?,?,?,?)";
+		String canonicalPath = "?";
+		try {
+			canonicalPath = file.getCanonicalPath();
+		} catch (IOException e1) {
+			canonicalPath = file.getAbsolutePath();
+			e1.printStackTrace();
+		}
+		String fileName = file.getName();
+		Timestamp processtime = new Timestamp(new Date().getTime());
+
+
+		
+		if (c!= null){
+			boolean exceptionOcurred = false;
+			Exception eTmp = null;
+			try {
+				PreparedStatement ps_INSERTFILESTATUS = c.prepareStatement(sql);
+				ps_INSERTFILESTATUS.setString(1, fileName);
+				ps_INSERTFILESTATUS.setString(2, canonicalPath);
+				ps_INSERTFILESTATUS.setString(3, outcome);
+				ps_INSERTFILESTATUS.setTimestamp(4, processtime);
+				ps_INSERTFILESTATUS.execute();
+			} catch (SQLException e) {
+				exceptionOcurred = true;
+				outcomeLog.warn("Unable to write file processing statistics to database. Statistics were still written" +
+						" to the log files. Please Investigate. \n" + e.getMessage());
+				eTmp = new SQLException(e);
+			} finally {
+				/** TODO MAKE THIS GO INTO A SPECIAL LOG FILE NOT JUST CONSOLE **/
+				outcomeLog.info("--------File Proecessing Results--------");
+				outcomeLog.info("Filename: " + fileName);
+				outcomeLog.info("Filepath: " + canonicalPath);
+				outcomeLog.info("Processed Time: " + processtime);
+				outcomeLog.info("Outcome: " + outcome);
+				if (exceptionOcurred){
+					outcomeLog.warn("ALERT. Unable to write these statistics to database. " +
+							"Please Investigate. \n" + eTmp.getMessage());
+					// NOT A TRUE ERROR, SO DON'T MARK FILES AS FAILED--FILE IS null AND SO IS THE FAILED CSV DIR
+					socj.errorCleanup(socj, socj.savepoints.get("finalCommit"), c, null, null, eTmp);
+				}
+			}
+		}
+	}
 	
+	/**
+	 * @param c database connection
+	 */
+	public static void closeDbConnection(Connection c) {
+		/** CLOSE CONNECTION TO DATABASE **/
+		try {
+			if (c != null) {
+				c.close();
+				log.info("Closed Database Connection. Good-bye.");
+			}
+		} catch (SQLException e) {
+			log.fatal("THIS IS BAD. PROBLEM OCURRED TRYING TO CLOSE DB CONNECTION.");
+		}
+	}
+
 	/**
 	 * returns a SagesEtlException that wraps the original exception	
 	 * @param msg SAGES ETL message to display

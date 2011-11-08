@@ -14,6 +14,7 @@ import java.util.ArrayList;
 
 import org.jhuapl.edu.sages.etl.SagesEtlException;
 import org.jhuapl.edu.sages.etl.oldstuff.TestOpenCsvJar;
+import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 
 /**
  * Design Pattern: Strategy
@@ -35,6 +36,11 @@ public interface ETLStrategy {
 	/** Adds ETL_FLAG column to a table **/
 	String addFlagColumn(String tableToModify);
 	
+	/** truncate cleansing & staging tables 
+	 * @throws SagesEtlException 
+	 * @throws SQLException **/
+	void truncateCleanseAndStagingTables(DumbTestOpenCsvJar socj_dumb, Connection c, File file,
+			Savepoint groundZero) throws SagesEtlException, SQLException;
 	/** creating cleanse table **/
 	Savepoint buildCleanseTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException,SagesEtlException;
 	/** Adds ETL_FLAG column to cleanse table **/

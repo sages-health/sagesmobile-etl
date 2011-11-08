@@ -41,7 +41,7 @@
    		<configuration>
 				<archive>
 	   			<manifest>  
-	   				<mainClass>org.jhuapl.edu.sages.etl.TestOpenCsvJar</mainClass>
+	   				<mainClass>org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar</mainClass>
 	   			</manifest>
    			</archive>
  		    <descriptorRefs> 

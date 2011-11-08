@@ -32,6 +32,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.jhuapl.edu.sages.etl.ETLProperties;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
+import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 import org.postgresql.util.PSQLException;
 
 import au.com.bytecode.opencsv.CSVReader;
@@ -60,6 +61,11 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		// "42701": column "etl_flag" of relation "oevisit_etl_cleanse_table" already exists
 		// "42701": column "etl_flag" of relation "oevisit_etl_staging_db" already exists
 		add("42701"); 
+
+		// "42P01": relation "oevisit_etl_cleanse_table" does not exist
+		// "42P01": relation "oevisit_etl_staging_db" does not exist
+		add("42P01");
+		add("CODE");
 		add("CODE");
 		add("CODE");
 	}};
@@ -195,7 +201,41 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 			System.exit(-1); 	
 		}
 	}
+	/**
+	 * @param socj_dumb
+	 * @param c
+	 * @param file
+	 * @param groundZero
+	 * @throws SagesEtlException
+	 * @throws SQLException 
+	 */
+	public void truncateCleanseAndStagingTables(DumbTestOpenCsvJar socj_dumb, Connection c, File file,
+			Savepoint groundZero) throws SagesEtlException, SQLException {
+		log.info("--TRUNCATE CLEANSE & STAGING--");
+		socj_dumb.src_table_name = socj_dumb.props_etlconfig.getProperty("dbprefix_src") + "_" + SagesOpenCsvJar.ETL_CLEANSE_TABLE;
+		socj_dumb.dst_table_name = socj_dumb.props_etlconfig.getProperty("dbprefix_dst") + "_" + SagesOpenCsvJar.ETL_STAGING_DB;
 
+		try {
+			PreparedStatement ps_TRUNCATECleanseTable = c.prepareStatement("TRUNCATE TABLE " + socj_dumb.src_table_name);
+			PreparedStatement ps_TRUNCATEStagingTable = c.prepareStatement("TRUNCATE TABLE " + socj_dumb.dst_table_name);
+
+			ps_TRUNCATECleanseTable.execute();
+			ps_TRUNCATEStagingTable.execute();
+			c.commit();
+		} catch (SQLException e) {
+			if (ignorableErrorCodes.contains(e.getSQLState())){
+	    		/** known error. we can ignore & recover. **/
+	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
+	    		c.rollback(groundZero);
+	    	} else {
+	    		/** unknown error. bad. must abort. **/
+	    		log.fatal("Error truncating or executing the etl cleanse -or- staging table: " + e.getMessage());
+	    		errorCleanup(socj_dumb, groundZero, c, null, socj_dumb.faileddir_csvfiles, e);
+	    		throw SagesOpenCsvJar.abort(e.getMessage(), e);
+	    	}
+		}
+	}
+	
 	
 	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#buildCleanseTable(java.sql.Connection, org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar, java.sql.Savepoint)
@@ -598,6 +638,8 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	public int errorCleanup(SagesOpenCsvJar socj, Savepoint savepoint, Connection connection, File currentCsv, String failedDirPath, Exception e){
     String savepointName = "";
     socj.success = false;
+    File fileRefForStatusLogging = null;
+    
     int errorFlag = 0;
 		try {
 			log.error("ERROR CLEANUP FOR EXCEPTION:\n" + e.getMessage());
@@ -605,12 +647,11 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 			savepointName = savepoint.getSavepointName();
 			connection.rollback(savepoint);
 			connection.commit();
-			
 			/** 
 			 * MOVE CURRENT CSV OVER TO FAILED, 
 			 * TODO: WRITE TO LOG: FILE_X FAILED, FAILURE OCCURED AT STEP_X **/
 			if (currentCsv != null) {
-				//failedCsvFiles.add(currentCsv);
+				socj.failedCsvFiles.add(currentCsv);
 		    	Date date = new Date();
 		    	long dtime = date.getTime();
 		    	
@@ -618,15 +659,18 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 		    	File dir = new File(failedDirPath);
 
 		    	/** Move file to new dir **/
-		    	FileUtils.copyFile(currentCsv, new File(dir, dtime + "_"+ currentCsv.getName()));
+		    	fileRefForStatusLogging = new File(dir, dtime + "_"+ currentCsv.getName());
+		    	FileUtils.copyFile(currentCsv, fileRefForStatusLogging);
 		    	FileUtils.forceDelete(currentCsv);
+				SagesOpenCsvJar.logFileOutcome(socj, connection, fileRefForStatusLogging, "FAILURE");
+
 			}
 		} catch(IOException io){
 			log.error(io.getMessage());
-			//TODO throw Sages Exception?
 		} catch (SQLException e1) {
 			log.error(e1.getMessage());
-			//TODO throw Sages Exception?
+		} catch (SagesEtlException e2) {
+			log.error(e2.getMessage());
 		} finally {
 			log.error("SYSTEM ROLLED BACK TO SAVEPOINT = " + savepointName);
 			/** This is an error occurring with creating the stage and cleanse table. no recovery option. **/
