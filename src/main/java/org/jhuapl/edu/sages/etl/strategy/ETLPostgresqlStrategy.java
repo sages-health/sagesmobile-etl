@@ -584,13 +584,21 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    			Object VALUE = null;
 	    				VALUE = rs_SELECT_CLEANSING.getObject(sourcColName);
 					log.debug("THE VALUE AWAITED: "  + VALUE);
-					
+			
 	    			Integer SQL_TYPE = socj.DEST_SQLTYPE_MAP.get(destColName);
-	    			if (SQL_TYPE == Types.DATE){
+	    			if (VALUE.equals("")){
+	    				VALUE = null;
+	       				ps_INSERT_STAGING.setObject(socj.PARAMINDX_DST.get(destColName), VALUE, SQL_TYPE);
+	    				log.debug("SET NON DATE-"+ VALUE );
+	    				masterindices_dst.remove(socj.PARAMINDX_DST.get(destColName));
+	    			}
+	    			
+	    			else if (SQL_TYPE == Types.DATE){
 	    				/** http://postgresql.1045698.n5.nabble.com/insert-from-a-select-td3279325.html */
 	    				log.debug("date handling going on");
 	    				DateFormat formatter;
-	    				Date date;
+	    				Date date = null;
+	    				java.sql.Date sqlDate = null;
 	    				String formatToUse = socj.props_dateformats.getProperty(sourcColName); //i.e. "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy"
 	    				if (formatToUse == null){
 	    					log.error("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files. Check dateformats.properties");
@@ -600,9 +608,13 @@ public class ETLPostgresqlStrategy implements ETLStrategy {
 	    				}
 	    				formatter = new SimpleDateFormat(formatToUse);//grab configured date format
 	    				try {
-							date = (Date)formatter.parse(VALUE.toString());
-							java.sql.Date sqlDate = new java.sql.Date(date.getTime());
-							log.debug(sqlDate.toString());
+	    					if (VALUE.equals("")){ //"" => null date handling
+	    						
+	    					}else{
+	    						date = (Date)formatter.parse(VALUE.toString());
+	    						sqlDate = new java.sql.Date(date.getTime());
+	    						log.debug(sqlDate.toString());
+	    					}
 							ps_INSERT_STAGING.setDate(socj.PARAMINDX_DST.get(destColName),sqlDate);
 							log.debug("SET THE DATE STUFF-" + sqlDate);
 							masterindices_dst.remove(socj.PARAMINDX_DST.get(destColName));
