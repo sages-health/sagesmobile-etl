@@ -72,6 +72,10 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			log.fatal("problem occurred trying to process csv files:" + e.getMessage());
 		} catch (IOException e) {
 			log.fatal("problem occurred trying to process csv files:" + e.getMessage());
+		} catch (Exception e){
+			log.fatal("problem occurred trying to process csv files:" + e.getMessage());
+		} finally {
+			//TODO probaly should exit at this point
 		}
 
 		String DEBUGheader_src = StringUtils.join(socj_dumb.header_src);
@@ -99,31 +103,31 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 		for (File file : socj_dumb.csvFiles) {
 
 			
-			Savepoint groundZero = null;
+			Savepoint baseLine = null;
 			try {
-				groundZero = c.setSavepoint("groundZero");
-				socj_dumb.savepoints.put("groundZero", groundZero);
+				baseLine = c.setSavepoint("baseLine");
+				socj_dumb.savepoints.put("baseLine", baseLine);
 			} catch (SQLException e) {
-				log.debug("making savepoint 'groundZero' failed.");
+				log.debug("making savepoint 'baseLine' failed.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, groundZero, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, baseLine, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 			
 			log.info("--TRUNCATING CLEANSE & STAGING TABLES--");
 			try {
-			socj_dumb.truncateCleanseAndStagingTables(socj_dumb, c, null, groundZero);
+			socj_dumb.truncateCleanseAndStagingTables(socj_dumb, c, null, baseLine);
 			} catch (SQLException e){
 				// TODO Auto-generated catch block
 				log.fatal("the rollbacks failed.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, groundZero, c, null, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, baseLine, c, null, socj_dumb.getFaileddir_csvfiles(), e);
 				closeDbConnection(c);
 				System.exit(-1);
 			}
 			log.info("---PROCESSING A FILE---");
 
-			socj_dumb.currentFile = file;
-			socj_dumb.success = true;
+			socj_dumb.setCurrentFile(file);
+			socj_dumb.setSuccess(true);
 
 			log.debug("FILE SEEN: " + file.getName() + "\n");
 
@@ -152,7 +156,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e1) {
 				log.debug("making savepoint 'save1' failed.");
 				e1.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.faileddir_csvfiles, e1);
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e1);
 			}
 
 			Savepoint createCleanseSavepoint = null;
@@ -163,7 +167,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				// TODO Auto-generated catch block
 				log.debug("the rollbacks failed.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("alter CLEANSE");
@@ -172,7 +176,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("build STAGING");
@@ -184,7 +188,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				log.debug("rollback failed.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("alter STAGING");
@@ -194,7 +198,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				log.debug("rollback failed.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("build MAPPINGS");
@@ -219,7 +223,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e1) {
 				log.debug("making savepoint 'save2' failed.");
 				e1.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e1);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e1);
 			}
 
 			log.debug("insert into CLEANSE");
@@ -230,7 +234,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				log.debug("error creating prepared statement");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			try {
@@ -238,7 +242,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				log.debug("error setting params and executing the insert into cleanse prep stmt.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("RUNNING CUSTOM SQL AGAINST CLEANSING");
@@ -253,9 +257,9 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			try {
 				runCustomSql(c, socj_dumb.props_customsql_cleanse, socj_dumb.src_table_name);
 			} catch (Exception e) {
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file,socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file,socj_dumb.getFaileddir_csvfiles(), e);
 				log.debug("ETL_LOGGER: failure with custom sql against staging.");
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("(copying from CLEANSE to STAGING) select insert into STAGING");
@@ -267,10 +271,10 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 			} catch (SQLException e) {
 				log.debug("error occured copying from CLEANSE to STAGING.");
 				e.printStackTrace();
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			} catch (SagesEtlException e) {
 				log.debug("error occured copying from CLEANSE to STAGING.");
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("FINISHED MESSY STUFF. ALMOST DONE...\n\n");
@@ -288,7 +292,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				runCustomSql(c, socj_dumb.props_customsql_staging, socj_dumb.dst_table_name);
 			} catch (Exception e) {
 				log.debug("ETL_LOGGER: failure with custom sql against staging.");
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("select insert into FINAL PRODUCTION");
@@ -323,7 +327,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				ps_finalToProd.execute();
 			} catch (Exception e) {
 				log.debug("ETL_LOGGER: OOOOOOPS SOMETHING HAPPENED BAD IN THE END. SHUCKS");
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			try {
@@ -338,13 +342,13 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				}
 			} catch (Exception e) {
 				log.debug("ETL_LOGGER: failure with custom sql final to prod: " + e.getMessage());
-				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.faileddir_csvfiles, e);
+				socj_dumb.errorCleanup(socj_dumb, save2, c, file, socj_dumb.getFaileddir_csvfiles(), e);
 			}
 
 			log.debug("--CLEANUP--");
 			File fileRefForStatusLogging = null; 
 			try {
-				if (socj_dumb.success) {
+				if (socj_dumb.isSuccess()) {
 					log.debug("copy file to 'OUT' DIRECTORY");
 					/** Destination dir */
 					File destinationDir = new File(socj_dumb.outputdir_csvfiles);
@@ -352,6 +356,8 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 					// was done in the errorCleanup method
 					log.debug("delete file from 'IN' DIRECTORY");
 					fileRefForStatusLogging = etlMoveFile(file, destinationDir);
+				} else {
+					log.debug("fyi, was an unsuccessful run. errorcleanup already occurred.");
 				}
 			} catch (IOException io) {
 				log.fatal("ALERT PROBLEM DELETING FILE: " + io.getMessage());
@@ -364,7 +370,8 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 					Savepoint finalCommit = c.setSavepoint("finalCommit");
 					socj_dumb.savepoints.put("finalCommit", finalCommit);
 					log.debug("COMMITED");
-					logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "SUCCESS");
+					// is null if success=false
+					if (fileRefForStatusLogging != null) logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "SUCCESS");
 				} catch (SQLException e) {
 					log.fatal("UNEXPECTEDLY COULD NOT COMMIT CHANGES TO THE DATABASE. THIS IS BAD.");
 					try {

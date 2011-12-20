@@ -25,11 +25,12 @@ import org.jhuapl.edu.sages.etl.ConnectionFactory;
 import org.jhuapl.edu.sages.etl.ETLProperties;
 import org.jhuapl.edu.sages.etl.PropertiesLoader;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
+import org.jhuapl.edu.sages.etl.SqlStateHandler;
 import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 
 /**
  * {@link SagesOpenCsvJar} is the domain class and controls the execution of the overall ETL process. \
- * It contains an {@link ETLStrategy} object that implements most of the ETL processing logic.
+ * It contains an {@link ETLStrategyTemplate} object that implements most of the ETL processing logic.
  *  
  * @author POKUAM1
  * @created Nov 1, 2011
@@ -39,8 +40,8 @@ public abstract class SagesOpenCsvJar {
 	private static org.apache.log4j.Logger log = Logger.getLogger(SagesOpenCsvJar.class);
 	private static org.apache.log4j.Logger outcomeLog = Logger.getLogger("FileProcessingOutcome");
 	
-	/** The {@link ETLStrategy} object **/
-	protected ETLStrategy etlStrategy;
+	/** The {@link ETLStrategyTemplate} object **/
+	protected ETLStrategyTemplate etlStrategy;
 	
 	/** The savepoints **/
 	protected Map<String, Savepoint> savepoints;
@@ -49,13 +50,13 @@ public abstract class SagesOpenCsvJar {
 	protected File[] csvFiles;
 	
 	/** The current file that is being processed **/
-	protected File currentFile;
+	private File currentFile;
 	
 	/** Current file records that the ETL will load into the production table via SQL statements **/
 	protected ArrayList<String[]> currentEntries;
 
 	/** Flag used to determine whether a file should be moved to directory that signifies successful processing **/
-	protected boolean success;
+	private boolean success;
 	
 	/** TODO: not used yet. The current file marked for deletion due to an error in processing **/
 	protected File fileMarkedForDeletion;
@@ -65,7 +66,7 @@ public abstract class SagesOpenCsvJar {
 	protected int currentRecNum;
 	
 	/** TODO: not used yet. List of files ETL encountered failure while processing **/
-	protected static List<File> failedCsvFiles;
+	private static List<File> failedCsvFiles;
 	
 	
 	/** csv files are loaded from inputdir and moved to outputdir after being processed successfully  */
@@ -74,7 +75,7 @@ public abstract class SagesOpenCsvJar {
 	/** ETL moves successfully processed files to the output directory **/
 	protected String outputdir_csvfiles;
 	/** ETL moves unsucessfully processed files to the failed directory **/
-	protected String faileddir_csvfiles;
+	private String faileddir_csvfiles;
 	
 	protected static final String ETL_CLEANSE_TABLE = "ETL_CLEANSE_TABLE";
 	protected static final String ETL_STAGING_DB = "ETL_STAGING_DB";
@@ -131,11 +132,11 @@ public abstract class SagesOpenCsvJar {
 		PropertiesLoader etlProperties = new ETLProperties();
 		etlProperties.loadEtlProperties();
 		initializeProperties((ETLProperties) etlProperties);
-		failedCsvFiles = new ArrayList<File>();
+		setFailedCsvFiles(new ArrayList<File>());
 		savepoints = new LinkedHashMap<String, Savepoint>();
 	}
 	
-	public void setEtlStrategy (ETLStrategy strategy){
+	public void setEtlStrategy (ETLStrategyTemplate strategy){
 		etlStrategy = strategy;
 	}
 	
@@ -224,7 +225,7 @@ public abstract class SagesOpenCsvJar {
 		
 		this.inputdir_csvfiles = props_etlconfig.getProperty("csvinputdir");
 		this.outputdir_csvfiles = props_etlconfig.getProperty("csvoutputdir");
-		this.faileddir_csvfiles = props_etlconfig.getProperty("csvfaileddir");
+		this.setFaileddir_csvfiles(props_etlconfig.getProperty("csvfaileddir"));
 	}
 	
 	/**
@@ -326,7 +327,10 @@ public abstract class SagesOpenCsvJar {
 					outcomeLog.warn("ALERT. Unable to write these statistics to database. " +
 							"Please Investigate. \n" + eTmp.getMessage());
 					// NOT A TRUE ERROR, SO DON'T MARK FILES AS FAILED--FILE IS null AND SO IS THE FAILED CSV DIR
-					socj.errorCleanup(socj, socj.savepoints.get("finalCommit"), c, null, null, eTmp);
+//					socj.errorCleanup(socj, socj.savepoints.get("finalCommit"), c, null, null, eTmp);
+					
+					//TODO OMG THIS IS GROSS FIX ASAP
+					socj.etlStrategy.m_sqlStateHandler.errorCleanup(socj, socj.savepoints.get("finalCommit"), c, null, null, eTmp);
 				}
 			}
 		}
@@ -355,6 +359,38 @@ public abstract class SagesOpenCsvJar {
 	 */
 	public static SagesEtlException abort(String msg, Throwable e){
 		return new SagesEtlException(e.getMessage(), e);
+	}
+
+	public String getFaileddir_csvfiles() {
+		return faileddir_csvfiles;
+	}
+
+	public void setFaileddir_csvfiles(String faileddir_csvfiles) {
+		this.faileddir_csvfiles = faileddir_csvfiles;
+	}
+
+	public File getCurrentFile() {
+		return currentFile;
+	}
+
+	public void setCurrentFile(File currentFile) {
+		this.currentFile = currentFile;
+	}
+
+	public static List<File> getFailedCsvFiles() {
+		return failedCsvFiles;
+	}
+
+	public static void setFailedCsvFiles(List<File> failedCsvFiles) {
+		SagesOpenCsvJar.failedCsvFiles = failedCsvFiles;
+	}
+
+	public boolean isSuccess() {
+		return success;
+	}
+
+	public void setSuccess(boolean success) {
+		this.success = success;
 	}
 	
 }
