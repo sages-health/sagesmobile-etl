@@ -31,6 +31,12 @@ public class ConnectionFactory {
 	
 	/**
 	 * Establishes database connection to the target database
+	 * @param dbmsType - String with value postgresql (not fully implemented are: msaccess, mysql)
+	 * @param serverName 
+	 * @param dbname
+	 * @param user
+	 * @param password
+	 * @param portNumber - int value
 	 * @return Connection
 	 * @throws SQLException
 	 */

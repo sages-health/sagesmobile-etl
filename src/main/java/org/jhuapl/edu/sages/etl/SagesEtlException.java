@@ -26,7 +26,6 @@ public class SagesEtlException extends Exception {
 	 */
 	public SagesEtlException(String message, Throwable cause) {
 		super(message, cause);
-		// TODO Auto-generated constructor stub
 	}
 
 	/**
@@ -34,7 +33,6 @@ public class SagesEtlException extends Exception {
 	 */
 	public SagesEtlException(String message) {
 		super(message);
-		// TODO Auto-generated constructor stub
 	}
 
 	/**
@@ -42,7 +40,6 @@ public class SagesEtlException extends Exception {
 	 */
 	public SagesEtlException(Throwable cause) {
 		super(cause);
-		// TODO Auto-generated constructor stub
 	}
 
 	

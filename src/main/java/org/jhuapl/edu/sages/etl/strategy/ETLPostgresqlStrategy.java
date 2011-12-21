@@ -27,7 +27,6 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.jhuapl.edu.sages.etl.ETLProperties;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
-import org.postgresql.util.PSQLException;
 
 /**
  * {@link ETLPostgresqlStrategy} is the Postgresql specific strategy for the ETL processing logic. 
@@ -37,6 +36,8 @@ import org.postgresql.util.PSQLException;
  */
 public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 	private static final Logger log = Logger.getLogger(ETLPostgresqlStrategy.class);
+	
+	private static final String msgFatal = "ETL_LOGGER: error did occur for this file, but data is rolled back to last good state.";
 	public static final Set<String> postgresqlIgnorableErrorCodes = new HashSet<String>(){{
 		
 		// "42P07" => relation "oevisit_etl_cleanse_table" already exists
@@ -67,26 +68,6 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 		super.m_sqlStateHandler.setIgnorableErrorCodes(postgresqlIgnorableErrorCodes);
 	}
 	
-	/* (non-Javadoc)
-	 * @see org.jhuapl.edu.sages.etl.ETLStrategy#alterStagingTableAddFlagColumn(java.sql.Connection, java.sql.Savepoint, java.sql.Savepoint)
-	 */
-	@Override
-	public void alterStagingTableAddFlagColumn(Connection c, Savepoint save1,
-			Savepoint createCleanseSavepoint) throws SQLException,
-			SagesEtlException {
-
-		String sqlaltertableAddColumn;
-		PreparedStatement PS_addcolumn_Flag;
-		sqlaltertableAddColumn = addFlagColumn(m_socj.dst_table_name);
-	    PS_addcolumn_Flag = c.prepareStatement(sqlaltertableAddColumn);
-	    log.debug("ALTER STATEMENT: " + sqlaltertableAddColumn);
-	    
-		try {
-	    	PS_addcolumn_Flag.execute();
-	    } catch (Exception e){
-	    	m_sqlStateHandler.sqlExceptionHandlerAlterStagingTableAddFlagColumn(c, m_socj, save1, createCleanseSavepoint, e);
-	    }
-	}
 	
 	/* (non-Javadoc)
 	 * @see org.jhuapl.edu.sages.etl.strategy.ETLStrategy#buildStagingTable(java.sql.Connection, org.jhuapl.edu.sages.etl.opencsvpods.SagesOpenCsvJar, java.sql.Savepoint)
@@ -186,7 +167,6 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 	     *  
 	     */
 
-		int lastTick;
 		String insertStmt_src = "INSERT INTO " + socj.src_table_name + " VALUES (";
 	    
 	    for (int h=0; h < socj.header_src.length; h++){
@@ -252,8 +232,6 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 
 	@Override
 	public void copyFromCleanseToStaging(Connection c, SagesOpenCsvJar socj, Savepoint save2) throws SQLException, SagesEtlException {
-		int lastComma;
-		int lastTick;
 		PreparedStatement ps_SELECT_CLEANSING = c.prepareStatement("SELECT * FROM " + socj.src_table_name);
 		ResultSet rs_SELECT_CLEANSING = ps_SELECT_CLEANSING.executeQuery();
 		
@@ -347,13 +325,13 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 	    			
 	    			else if (SQL_TYPE == Types.DATE){
 	    				/** http://postgresql.1045698.n5.nabble.com/insert-from-a-select-td3279325.html */
-	    				log.debug("date handling going on");
+	    				log.debug("date handling now occurring");
 	    				DateFormat formatter;
 	    				Date date = null;
 	    				java.sql.Date sqlDate = null;
 	    				String formatToUse = socj.props_dateformats.getProperty(sourcColName); //i.e. "yyyy-MM-dd HH:mm:ss", "dd.MM.yyyy"
 	    				if (formatToUse == null){
-	    					log.error("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files. Check dateformats.properties");
+	    					log.fatal("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files. Check dateformats.properties");
 	    					throw SagesOpenCsvJar.abort("Date formatter was defined for a column '" + sourcColName + "' that does not exist in the .csv input files: " + sourcColName, new NullPointerException());
 	    				} else {
 	    					formatToUse.trim();
@@ -372,11 +350,9 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 							masterindices_dst.remove(socj.PARAMINDX_DST.get(destColName));
 						} catch (ParseException e1) {
 							// TODO Auto-generated catch block
-							log.debug("ERROR: Check your date pattern in the file dateformats.properties:\n\t" +
+							log.fatal("ERROR: Check your date pattern in the file dateformats.properties:\n\t" +
 									sourcColName + "=" + socj.props_dateformats.getProperty(sourcColName) +"\n");
-							log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
 							e1.printStackTrace();
-							//errorCleanup(save2, c, socj.currentFile, socj.faileddir_csvfiles, e1);
 							throw new SagesEtlException(e1.getMessage(), e1);
 						}
 	    			} else {
@@ -391,16 +367,17 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 	    		for (Integer nullparamindx : masterindices_dst){
 	    			ps_INSERT_STAGING.setNull(nullparamindx, rsmd.getColumnType(nullparamindx));
 	    		}
-	    		//TODO: NEED THIS NOT HARDCODED TO 10--should be 1+ number of columns...
-	    		/** THIS IS FOR THE COLUMN ETL_FLAG **/
+
+	    		/** THIS IS FOR THE COLUMN ETL_FLAG, which is at (1 + totalCols),
+	    		 *  it gets set to NULL in the STAGING TABLE **/
 	    		ps_INSERT_STAGING.setNull(socj.PARAMINDX_DST.size() + 1, Types.VARCHAR);
 	    		ps_INSERT_STAGING.executeUpdate();
 	    	}
 		} catch(SQLException se){
-			log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
+			log.fatal(msgFatal);
 			throw  SagesOpenCsvJar.abort(se.getMessage(), se);
 		} catch (Exception e){
-			log.debug("ETL_LOGGER: error did occur for this file, but rolled back data and will proceed with next file.");
+			log.fatal(msgFatal);
 			throw  SagesOpenCsvJar.abort(e.getMessage(), e);
 		}
 	}

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.Properties;
 
 /**
+ * A properties loader specifically for loading the required ETL properties files
  * @author POKUAM1
  * @created Oct 28, 2011
  */

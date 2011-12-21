@@ -25,11 +25,10 @@ import org.jhuapl.edu.sages.etl.ConnectionFactory;
 import org.jhuapl.edu.sages.etl.ETLProperties;
 import org.jhuapl.edu.sages.etl.PropertiesLoader;
 import org.jhuapl.edu.sages.etl.SagesEtlException;
-import org.jhuapl.edu.sages.etl.SqlStateHandler;
 import org.jhuapl.edu.sages.etl.opencsvpods.DumbTestOpenCsvJar;
 
 /**
- * {@link SagesOpenCsvJar} is the domain class and controls the execution of the overall ETL process. \
+ * {@link SagesOpenCsvJar} is the domain class and controls the execution of the overall ETL process.
  * It contains an {@link ETLStrategyTemplate} object that implements most of the ETL processing logic.
  *  
  * @author POKUAM1
@@ -153,8 +152,8 @@ public abstract class SagesOpenCsvJar {
 	};
 	
 	public void truncateCleanseAndStagingTables(DumbTestOpenCsvJar socj_dumb, Connection c, File file,
-			Savepoint groundZero) throws SagesEtlException, SQLException {
-		etlStrategy.truncateCleanseAndStagingTables(socj_dumb, c, file, groundZero);
+			Savepoint baseLine) throws SagesEtlException, SQLException {
+		etlStrategy.truncateCleanseAndStagingTables(socj_dumb, c, file, baseLine);
 	}
 	
 	public Savepoint buildStagingTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException, SagesEtlException{

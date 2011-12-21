@@ -19,25 +19,27 @@ import org.jhuapl.edu.sages.etl.strategy.SagesOpenCsvJar;
 import org.postgresql.util.PSQLException;
 
 /**
+ * Handles the various exceptions that result from SQL activity
+ * 
  * @author POKUAM1
  * @created Dec 20, 2011
  */
 public class SqlStateHandler {
 	private static final Logger log = Logger.getLogger(SqlStateHandler.class);
 	
-
-
 	/**
-	 * 
+	 * SQL codes that are safe to ignore and are expected
 	 */
-	public SqlStateHandler() {
-		// TODO Auto-generated constructor stub
-	}
-	
-	
 	protected Set<String> ignorableErrorCodes = new HashSet<String>(){{
 		add("CODE");
 	}};
+
+	/**
+	 * default constructor
+	 */
+	public SqlStateHandler() {
+	}
+	
 	
 	public  Set<String> getIgnorableErrorCodes() {
 		return ignorableErrorCodes;
@@ -49,19 +51,18 @@ public class SqlStateHandler {
 	
 	/**
 	 * @param e {@link SQLException}
-	 * @return boolean if sql state code is in the ignorable set of codes
+	 * @return boolean if SQL state code is in the ignorable set of codes
 	 */
 	protected boolean isSqlStateIgnorable(SQLException e) {
-//		return ignorableErrorCodes.contains(((PSQLException)e).getSQLState());
 		return getIgnorableErrorCodes().contains(e.getSQLState());
 	}
 	
 	
 	/**
-	 * @param c
-	 * @param socj
-	 * @param save1
-	 * @param createCleanseSavepoint
+	 * @param c - {@link Connection}
+	 * @param socj - {@link SagesOpenCsvJar}
+	 * @param save1 - {@link Savepoint}
+	 * @param createCleanseSavepoint - {@link Savepoint}
 	 * @throws SQLException
 	 * @throws SagesEtlException
 	 */
@@ -103,10 +104,9 @@ public class SqlStateHandler {
 	}
 	
 	/**
-	 * @param c
-	 * @param save1
-	 * @param createCleanseSavepoint
-	 * @param PS_addcolumn_Flag
+	 * @param c - {@link Connection}
+	 * @param save1 - {@link Savepoint}
+	 * @param createCleanseSavepoint - {@link Savepoint}
 	 * @throws SQLException
 	 * @throws SagesEtlException
 	 */
@@ -148,10 +148,10 @@ public class SqlStateHandler {
 	 *	or:
 	 *	  unknown error. bad. must abort.
 	 *   
-	 * @param c
-	 * @param save1
-	 * @param lastSavepoint - the last savepoint corresponding to valid database integrity
-	 * @param e
+	 * @param c - {@link Connection}
+	 * @param save1 - {@link Savepoint}
+	 * @param lastSavepoint - {@link Savepoint} the last savepoint corresponding to valid database integrity
+	 * @param e - {@link SQLException}
 	 * @throws SQLException
 	 */
 	protected void sqlStateHandler(Connection c, SagesOpenCsvJar socj, Savepoint save1,
@@ -168,10 +168,10 @@ public class SqlStateHandler {
 	
 
 	/**
-	 * @param c
-	 * @param socj
-	 * @param save1
-	 * @param createStagingSavepoint
+	 * @param c - {@link Connection}
+	 * @param socj - {@link SagesOpenCsvJar}
+	 * @param save1 - {@link Savepoint}
+	 * @param createStagingSavepoint - {@link Savepoint}
 	 * @throws SQLException
 	 * @throws SagesEtlException
 	 */
@@ -212,9 +212,9 @@ public class SqlStateHandler {
 	
 
 	/**
-	 * @param c
-	 * @param save1
-	 * @param createCleanseSavepoint
+	 * @param c - {@link Connection}
+	 * @param save1 - {@link Savepoint}
+	 * @param createCleanseSavepoint - {@link Savepoint}
 	 * @throws SQLException
 	 * @throws SagesEtlException
 	 */
@@ -243,10 +243,10 @@ public class SqlStateHandler {
 	}
 	
 	/**
-	 * @param socj_dumb
-	 * @param c
-	 * @param baseLine
-	 * @throws SQLException
+	 * @param socj_dumb - {@link DumbTestOpenCsvJar}
+	 * @param c - {@link Connection}
+	 * @param baseLine - {@link Savepoint}
+	 * @throws SQLException 
 	 * @throws SagesEtlException
 	 */
 	public void sqlExceptionHandlerTruncateCleanseAndStagingTables(
