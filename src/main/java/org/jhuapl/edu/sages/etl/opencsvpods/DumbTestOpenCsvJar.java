@@ -372,12 +372,13 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				System.exit(-1);
 			} finally {
 				try {
+					// is null if success=false
+					if (fileRefForStatusLogging != null) logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "SUCCESS");
+
 					c.commit();
 					Savepoint finalCommit = c.setSavepoint("finalCommit");
 					socj_dumb.savepoints.put("finalCommit", finalCommit);
 					prettyPrintLog.info("--STEP "+ (step++) +"-- COMMITED");
-					// is null if success=false
-					if (fileRefForStatusLogging != null) logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "SUCCESS");
 				} catch (SQLException e) {
 					triageLog.fatal("UNEXPECTEDLY COULD NOT COMMIT CHANGES TO THE DATABASE. THIS IS BAD.");
 					try {
