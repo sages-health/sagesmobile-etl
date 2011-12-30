@@ -317,7 +317,7 @@ public abstract class SagesOpenCsvJar {
 				eTmp = new SQLException(e);
 			} finally {
 				/** TODO MAKE THIS GO INTO A SPECIAL LOG FILE NOT JUST CONSOLE **/
-				outcomeLog.info("--------File Proecessing Results--------");
+				outcomeLog.info("--------File Processing Results--------");
 				outcomeLog.info("Filename: " + fileName);
 				outcomeLog.info("Filepath: " + canonicalPath);
 				outcomeLog.info("Processed Time: " + processtime);
