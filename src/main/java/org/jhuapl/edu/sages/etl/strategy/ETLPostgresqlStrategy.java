@@ -316,6 +316,11 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 					log.debug("THE VALUE AWAITED: "  + VALUE);
 			
 	    			Integer SQL_TYPE = socj.DEST_SQLTYPE_MAP.get(destColName);
+	    			if (SQL_TYPE == null){
+    					log.fatal("'" + destColName + "' does not exist as a destination column in the production table, but was used in the src-to-dst-column-mappings.properties file. Check the mapping file for mistakes.");
+    					throw SagesOpenCsvJar.abort("'" + destColName + "' does not exist as a destination column in the production table, but was used in the src-to-dst-column-mappings.properties file. Check the mapping file for mistakes." + destColName, new NullPointerException());
+	    				
+	    			}
 	    			if (VALUE.equals("")){
 	    				VALUE = null;
 	       				ps_INSERT_STAGING.setObject(socj.PARAMINDX_DST.get(destColName), VALUE, SQL_TYPE);
