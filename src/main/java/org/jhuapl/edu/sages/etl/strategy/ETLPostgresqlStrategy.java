@@ -297,9 +297,11 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 			}
 		}
 		
+		int recNum = 0;
 		try {
 	    	while (rs_SELECT_CLEANSING.next()){
 	//    		for (int z = 0; z<z_colCount; z++){
+	    		recNum++;
 	    		Set<Integer> masterindices_dst = new HashSet<Integer>(socj.PARAMINDX_DST.values());
 	    		
 	    		for (Entry<String,Integer> z_indexEntry: z_indexMap.entrySet()){
@@ -380,9 +382,11 @@ public class ETLPostgresqlStrategy extends ETLStrategyTemplate {
 	    	}
 		} catch(SQLException se){
 			log.fatal(msgFatal);
+			log.fatal("Line " + recNum + " caused an error.");
 			throw  SagesOpenCsvJar.abort(se.getMessage(), se);
 		} catch (Exception e){
 			log.fatal(msgFatal);
+			log.fatal("Line " + recNum + " caused an error.");
 			throw  SagesOpenCsvJar.abort(e.getMessage(), e);
 		}
 	}
