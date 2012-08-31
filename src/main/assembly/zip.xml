@@ -16,6 +16,7 @@
                 <include>csvfilerepo/**</include>
                 <include>customsql/**</include>
                 <include>logs/**</include>
+                <include>scriptutils/**</include>
             </includes>
             <excludes>
             	<exclude>*.git</exclude>
