@@ -28,8 +28,8 @@ set CURDIR=%CD%
 :: execute .sh script to copy csv files from source Android device to destination machine
 sh pullCsvAndDiff.sh
 
-cd ..\..\sages-etl-1.0-SNAPSHOT-bin\
-java -jar sages-etl-1.0-SNAPSHOT-sages-consumer-jar-with-dependencies.jar
+cd ..\..\sages-etl-2.0-SNAPSHOT-module\
+java -jar sages-etl-2.0-SNAPSHOT-sages-consumer-jar-with-dependencies.jar
 
 ::cd C:\SAGES_CLINIC_MORBIDITY_VISITS\sages-etl-1.0-SNAPSHOT-bin\
 ::java -jar C:\SAGES_CLINIC_MORBIDITY_VISITS\sages-etl-1.0-SNAPSHOT-bin\sages-etl-1.0-SNAPSHOT-sages-consumer-jar-with-dependencies.jar
