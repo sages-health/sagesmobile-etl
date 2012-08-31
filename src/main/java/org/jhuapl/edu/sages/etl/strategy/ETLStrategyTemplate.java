@@ -139,6 +139,32 @@ public abstract class ETLStrategyTemplate {
 	}
 
 
+	/** creating etl status table **/ 
+	/************************************
+	 * build ETL_STATUS_TABLE 
+	 * **********************************
+	 * SQL: "CREATE TABLE..."
+	 * 
+	 ************************************/
+	public Savepoint buildEtlStatusTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SagesEtlException, SQLException {
+		Savepoint createEtlStatusSavepoint = c.setSavepoint("createEtlStatusSavepoint");
+		
+		// CREATE etl_status table
+		String createSql = "CREATE TABLE etl_status ("
+				+ "filename character varying(500),"
+				+ "filepath character varying(500),"
+				+ "outcome character varying(255),"
+				+ "processtime timestamp without time zone)";
+		
+		try {
+			PreparedStatement ps_CREATEFILESTATUS = c.prepareStatement(createSql);
+			ps_CREATEFILESTATUS.execute();
+			c.commit();
+		} catch (Exception e) {
+			m_sqlStateHandler.sqlExceptionHandlerBuildEtlStatusTable(c, socj, save1, createEtlStatusSavepoint, e);
+		} 
+		return createEtlStatusSavepoint;
+	}
 	
 	/** creating cleanse table **/
 	/*********************************** 

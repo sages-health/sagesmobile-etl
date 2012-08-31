@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Savepoint;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
@@ -78,18 +79,6 @@ public class SqlStateHandler {
 	    	String infoMsg = "Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage();
 	    	String fatalMsg = "Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup."; 
 	    	sqlStateHandler(c, socj, save1, createCleanseSavepoint, e, infoMsg, fatalMsg);
-	    	
-					//	    	if (isSqlStateIgnorable(e)){
-					//	    		/** known error. we can ignore & recover. **/
-					//	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
-					//	    		c.rollback(createCleanseSavepoint);
-					//	    		
-					//	    	} else {
-					//	    		/** unknown error. bad. must abort. **/
-					//	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
-					//	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
-					//	    	}
-	    	
 	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
 	    	if ("S0001".equals(e.getSQLState())){
 	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
@@ -101,6 +90,41 @@ public class SqlStateHandler {
 	    	errorCleanup(socj, save1, c, socj.getCurrentFile(), socj.getFaileddir_csvfiles(), e);
 	    	throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_CLEANSING_TABLE.", e); 
 	    }
+	}
+	
+	
+	/**
+	 * @param c - {@link Connection}
+	 * @param socj - {@link SagesOpenCsvJar}
+	 * @param save1 - {@link Savepoint}
+	 * @param createEtlStatusSavepoint - {@link Savepoint}
+	 * @throws SQLException
+	 * @throws SagesEtlException
+	 */
+	public void sqlExceptionHandlerBuildEtlStatusTable(Connection c,
+			SagesOpenCsvJar socj, Savepoint save1,
+			Savepoint createEtlStatusSavepoint, Exception ex) throws SQLException,
+			SagesEtlException {
+		
+		try {
+			throw ex;
+		} catch (PSQLException e){ //TODO: make this generic for SQLException
+			
+			String infoMsg = "Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage();
+			String fatalMsg = "Uh-oh, something bad happened trying to build the ETL_STATUS table. Starting error cleanup."; 
+			sqlStateHandler(c, socj, save1, createEtlStatusSavepoint, e, infoMsg, fatalMsg);
+			
+		} catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
+			if ("S0001".equals(e.getSQLState())){
+				log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
+			} else {
+				errorCleanup(socj, save1, c, socj.getCurrentFile(), socj.getFaileddir_csvfiles(), e);
+				throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_STATUS table.", e); 
+			}
+		} catch (Exception e) {
+			errorCleanup(socj, save1, c, socj.getCurrentFile(), socj.getFaileddir_csvfiles(), e);
+			throw SagesOpenCsvJar.abort("Uh-oh, something happened trying to build the ETL_STATUS table.", e); 
+		}
 	}
 	
 	/**
@@ -186,17 +210,6 @@ public class SqlStateHandler {
 			String infoMsg = "Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage();
 			String fatalMsg = "Uh-oh, something bad happened trying to build the ETL_STAGING_DB. Starting error cleanup."; 
 			sqlStateHandler(c, socj, save1, createStagingSavepoint, e, infoMsg, fatalMsg);
-
-			//	    	if (isSqlStateIgnorable(e)){
-				//	    		/** known error. we can ignore & recover. **/
-				//	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
-				//	    		c.rollback(createStagingSavepoint);	    		
-				//	    	} else {
-				//	    		/** unknown error. bad. must abort. **/
-				//	    		log.fatal("Uh-oh, something bad happened trying to build the ETL_CLEANSING_TABLE. Starting error cleanup.", e); 
-				//	    		errorCleanup(m_socj, save1, c, m_socj.currentFile, socj.faileddir_csvfiles, e);
-				//	    	}
-			
 	    } catch (SQLException e){ //TODO: make this generic for SQLException this is MS Access error
 	    	if ("S0001".equals(e.getSQLState())){
 	    		log.debug("ETL_LOGGER:" + e.getSQLState() + ", " + e.getMessage()); //TODO: LOGGING
@@ -259,16 +272,6 @@ public class SqlStateHandler {
 			String infoMsg = "Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage();
 			String fatalMsg = "Error truncating or executing the etl cleanse -or- staging table: " + e.getMessage();
 	    	sqlStateHandler(c, socj_dumb, baseLine, baseLine, e, infoMsg, fatalMsg);
-					//			if (isSqlStateIgnorable(e)){
-					//	    		/** known error. we can ignore & recover. **/
-					//	    		log.info("Safe to ignore, this is expected:" + e.getSQLState() + ", " + e.getMessage());
-					//	    		c.rollback(baseLine);
-					//	    	} else {
-					//	    		/** unknown error. bad. must abort. **/
-					//	    		log.fatal("Error truncating or executing the etl cleanse -or- staging table: " + e.getMessage());
-					//	    		errorCleanup(socj_dumb, baseLine, c, null, socj_dumb.faileddir_csvfiles, e);
-					//	    		throw SagesOpenCsvJar.abort(e.getMessage(), e);
-					//	    	}
 		} catch (Exception e) {
 			// TODO - is this really needed. investigate later...
     		/** unknown error. bad. must abort. **/
@@ -309,13 +312,14 @@ public class SqlStateHandler {
 				if (currentCsv != null) {
 					socj.getFailedCsvFiles().add(currentCsv);
 			    	Date date = new Date();
-			    	long dtime = date.getTime();
+			    	SimpleDateFormat sdf = SagesOpenCsvJar.getSimpleDateFormat();
+			    	String output = sdf.format(date);
 			    	
 			    	/** failure destination dir **/
 			    	File dir = new File(failedDirPath);
 
 			    	/** Move file to new dir **/
-			    	fileRefForStatusLogging = new File(dir, dtime + "_"+ currentCsv.getName());
+			    	fileRefForStatusLogging = new File(dir, output + "_"+ currentCsv.getName());
 			    	FileUtils.copyFile(currentCsv, fileRefForStatusLogging);
 			    	FileUtils.forceDelete(currentCsv);
 					SagesOpenCsvJar.logFileOutcome(socj, connection, fileRefForStatusLogging, "FAILURE");

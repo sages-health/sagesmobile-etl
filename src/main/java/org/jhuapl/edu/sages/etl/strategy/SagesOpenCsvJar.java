@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -67,6 +68,8 @@ public abstract class SagesOpenCsvJar {
 	/** TODO: not used yet. List of files ETL encountered failure while processing **/
 	private static List<File> failedCsvFiles;
 	
+	/** SimpleDateFormat to use for file processing timestamp **/
+	private static SimpleDateFormat sdf;
 	
 	/** csv files are loaded from inputdir and moved to outputdir after being processed successfully  */
 	/** ETL looks at the input directory for files to process **/
@@ -133,6 +136,7 @@ public abstract class SagesOpenCsvJar {
 		initializeProperties((ETLProperties) etlProperties);
 		setFailedCsvFiles(new ArrayList<File>());
 		savepoints = new LinkedHashMap<String, Savepoint>();
+		setSimpleDateFormat(new SimpleDateFormat("yyyy-MM-dd-HHmmssZ"));
 	}
 	
 	public void setEtlStrategy (ETLStrategyTemplate strategy){
@@ -149,6 +153,10 @@ public abstract class SagesOpenCsvJar {
 
 	public Savepoint buildCleanseTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException,SagesEtlException{
 		return etlStrategy.buildCleanseTable(c, socj, save1);
+	};
+	
+	public Savepoint buildEtlStatusTable(Connection c, SagesOpenCsvJar socj, Savepoint save1) throws SQLException,SagesEtlException{
+		return etlStrategy.buildEtlStatusTable(c, socj, save1);
 	};
 	
 	public void truncateCleanseAndStagingTables(DumbTestOpenCsvJar socj_dumb, Connection c, File file,
@@ -250,8 +258,11 @@ public abstract class SagesOpenCsvJar {
 	 */
 	protected static File etlMoveFile(File file, File destinationDir)throws IOException {
 		Date date = new Date();
-		long dtime = date.getTime();
-		File newFileLocation = new File(destinationDir, dtime + "_"+ file.getName());
+
+		SimpleDateFormat sdf = SagesOpenCsvJar.getSimpleDateFormat();
+    	String output = sdf.format(date);
+    	
+		File newFileLocation = new File(destinationDir, output + "_"+ file.getName());
 		/** Move file to new dir */
 		FileUtils.copyFile(file, newFileLocation);
 		FileUtils.forceDelete(file);
@@ -289,6 +300,7 @@ public abstract class SagesOpenCsvJar {
 	public static void logFileOutcome(SagesOpenCsvJar socj, Connection c, File file, String outcome) throws SagesEtlException {
 		String sql = "INSERT INTO etl_status(filename,filepath,outcome,processtime) VALUES(?,?,?,?)";
 		String canonicalPath = "?";
+		
 		try {
 			canonicalPath = file.getCanonicalPath();
 		} catch (IOException e1) {
@@ -298,11 +310,30 @@ public abstract class SagesOpenCsvJar {
 		String fileName = file.getName();
 		Timestamp processtime = new Timestamp(new Date().getTime());
 
-
-		
 		if (c!= null){
 			boolean exceptionOcurred = false;
 			Exception eTmp = null;
+/*			
+			// CREATE etl_status table
+			String createSql = "CREATE TABLE etl_status ("
+					+ "filename character varying(500),"
+					+ "filepath character varying(500),"
+					+ "outcome character varying(255),"
+					+ "processtime timestamp without time zone)";
+			
+			try {
+				PreparedStatement ps_CREATEFILESTATUS = c.prepareStatement(createSql);
+				ps_CREATEFILESTATUS.execute();
+				c.commit();
+			} catch (SQLException e) {
+				if (!"42P07".equals(e.getSQLState())){ // TODO make dbms agnostic
+					exceptionOcurred = true;
+					outcomeLog.warn("Unable to create 'etl_status' table for file processing statistics. Please Investigate. \n" + e.getMessage());
+					eTmp = new SQLException(e);
+				} 
+			} */
+			
+			// INSERT stats into etl_status table
 			try {
 				PreparedStatement ps_INSERTFILESTATUS = c.prepareStatement(sql);
 				ps_INSERTFILESTATUS.setString(1, fileName);
@@ -310,11 +341,11 @@ public abstract class SagesOpenCsvJar {
 				ps_INSERTFILESTATUS.setString(3, outcome);
 				ps_INSERTFILESTATUS.setTimestamp(4, processtime);
 				ps_INSERTFILESTATUS.execute();
-			} catch (SQLException e) {
-				exceptionOcurred = true;
-				outcomeLog.warn("Unable to write file processing statistics to database. Statistics were still written" +
-						" to the log files. Please Investigate. \n" + e.getMessage());
-				eTmp = new SQLException(e);
+			} catch (SQLException e2) {
+					exceptionOcurred = true;
+					outcomeLog.warn("Unable to write file processing statistics to database. Statistics were still written" +
+							" to the log files. Please Investigate. \n" + e2.getMessage());
+					eTmp = new SQLException(e2);
 			} finally {
 				/** TODO MAKE THIS GO INTO A SPECIAL LOG FILE NOT JUST CONSOLE **/
 				outcomeLog.info("--------File Processing Results--------");
@@ -390,6 +421,14 @@ public abstract class SagesOpenCsvJar {
 
 	public void setSuccess(boolean success) {
 		this.success = success;
+	}
+
+	public static SimpleDateFormat getSimpleDateFormat() {
+		return sdf;
+	}
+
+	private static void setSimpleDateFormat(SimpleDateFormat sdf) {
+		SagesOpenCsvJar.sdf = sdf;
 	}
 	
 }

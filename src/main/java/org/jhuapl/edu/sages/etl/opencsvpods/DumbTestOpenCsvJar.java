@@ -169,6 +169,17 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e1);
 			}
 
+			Savepoint createEtlStatusSavepoint = null;
+			try {
+				createEtlStatusSavepoint = socj_dumb.buildEtlStatusTable(c, socj_dumb, save1);
+				socj_dumb.savepoints.put("createEtlStatusSavepoint", createEtlStatusSavepoint);
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				log.debug("the rollbacks failed.");
+				e.printStackTrace();
+				socj_dumb.errorCleanup(socj_dumb, save1, c, file, socj_dumb.getFaileddir_csvfiles(), e);
+			}
+
 			Savepoint createCleanseSavepoint = null;
 			try {
 				createCleanseSavepoint = socj_dumb.buildCleanseTable(c, socj_dumb, save1);
