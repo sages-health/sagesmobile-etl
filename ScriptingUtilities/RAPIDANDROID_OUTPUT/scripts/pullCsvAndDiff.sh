@@ -1,8 +1,9 @@
 #!/bin/bash
 #################################
-# AUTHOR pokuam1  		        #
-# DATE 01/08/11			        #
-# REFACTORED 12/02/11  		    #
+# AUTHOR pokuam1  		#
+# DATE 01/08/11			#
+# REFACTORED 12/02/11  		#
+# Modified 08/31/12             #
 #################################
 # Dev Notes:
 # 
@@ -93,6 +94,9 @@ echo "command line option destFLAG -p = $destFlag"
 #     lrwxrwxrwx root     root   2011-11-27 19:15 sdcard -> /mnt/sdcard
 #
 #
+# FORM     is the form qualified directory on the Android device where the csv files
+#          are located. The syntax is always {formprefix}_exports, so a form with 
+#          prefix value "bednets" should define the value FORM="bednets_exports"
 #
 # DEST     is the path to the RAPIDANDROID_OUTPUT directory. It can be fully
 #          specified, or can use shortcuts of "." and ".." for relative pathname
@@ -106,6 +110,7 @@ echo "command line option destFLAG -p = $destFlag"
 DEVICEID=""
 
 SOURCE="sdcard/rapidandroid"
+FORM="bednets_exports"
 
 #destPwd=$destFlag
 destPwd="../.."
@@ -127,8 +132,9 @@ echo ""
 echo "exitcode=" $?
 
 adb $DEVICEID shell "mkdir $SOURCE/pulledexports"
-adb $DEVICEID pull "$SOURCE/exports" $DEST
-adb $DEVICEID shell "mv $SOURCE/exports/* $SOURCE/pulledexports"
+adb $DEVICEID shell "mkdir $SOURCE/pulledexports/$FORM"
+adb $DEVICEID pull "$SOURCE/exports/$FORM" $DEST
+adb $DEVICEID shell "mv $SOURCE/exports/$FORM/* $SOURCE/pulledexports/$FORM"
 echo "exitcode=" $?
 
 #####################################################
