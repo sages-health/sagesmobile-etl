@@ -76,6 +76,7 @@ public abstract class ETLStrategyTemplate {
 			socj.csvFiles = csvinputDir.listFiles();
 			if (socj.csvFiles.length == 0){
 				log.info("Input directory has no files. Nothing to load into database. Exiting.");
+				log.info("Your input directory is located here: " + socj.inputdir_csvfiles);
 				System.exit(0); 
 			} 
 			socj.header_src = determineHeaderColumns(socj.csvFiles[0]);
