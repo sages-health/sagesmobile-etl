@@ -1,0 +1,42 @@
+SAGES-ETL RELEASE NOTES 
+************************************************************************************************************
+The SAGES-ETL that moves .csv files from a directory, transforms them via optional custom sql statements, and writes the resulting data into a target relational database table.
+
+System Requirements: JDK 1.6, targets Windows platforms (tested on XP, Vista, 7, Server 2010)
+
+===============================
+SAGES-ETL 2.1 Release Notes
+===============================
+Release Date: November 29, 2012
+
+Additions
+- Created RELEASE_NOTES.txt file
+- Created backups4sms.bat to pull the rapidandroid.db file from the receiver phone
+
+Removals
+- none
+
+Changes
+- When input directory is empty, log now displays the path to this input directory.
+
+Fixes
+- none
+
+================================
+SAGES-ETL 2.0 Release Notes
+================================
+Release Date: September 11, 2012
+
+Additions
+- etl_status table in the target database is created if it does not exist 
+
+Removals
+- none
+
+Changes
+- Troubleshooting and error logs are daily rolling file appenders and have human friendly timestamp prefix
+- Error messages now include the line number of the row within the csv file when error occurrs
+- Shell & Bat scripts were moved within the source of the ETL, and the maven packaging step bundles everything together to allow for relative referencing within scripts
+  
+Fixes
+- none
