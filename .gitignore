@@ -1,0 +1,7 @@
+!.classpath
+!.project
+!.externalToolBuilders
+!etlconfig.properties
+!src-to-dst-column-mappings.properties
+!dateformats.properties
+target/*

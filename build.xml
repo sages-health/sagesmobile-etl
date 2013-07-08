@@ -1,0 +1,17 @@
+<project name="pom.version.sync" default="sync.version">
+    <property name="target.file" value="ScriptingUtilities/RAPIDANDROID_OUTPUT/scripts/glue.bat" />
+	<taskdef name="xmltask" classname="com.oopsconsultancy.xmltask.ant.XmlTask">
+		<classpath path="build-lib/xmltask.jar"/>
+	</taskdef>
+	<target name="sync.version">
+		<xmltask source="pom.xml">
+			<copy path="/:project/:version/text()" property="pom.version"/>
+		</xmltask>
+		<echo>Updating VERSION in ${target.file} to ${pom.version}</echo>
+		<replaceregexp file="${target.file}"
+               match="set VERSION=.*"
+               replace="set VERSION=${pom.version}"
+               byline="true"
+		/>
+	</target>
+</project>
