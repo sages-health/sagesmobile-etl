@@ -12,15 +12,24 @@
            <directory></directory>
             <outputDirectory/>
             <includes>
-                <include>*.properties</include>
+                <!-- <include>*.properties</include> -->
+             	<include>etlconfig.properties</include>
+             	<include>dateformats.properties</include>
+             	<include>src-to-dst-column-mappings.properties</include>
                 <include>csvfilerepo/**</include>
                 <include>customsql/**</include>
-                <include>logs/**</include>
+                <!-- <include>logs/**</include> -->
+                <include>logs/fileoutcome.log</include>
+                <include>logs/troubleshooting.log</include>
                 <include>ScriptingUtilities/**</include>
                 <include>RELEASE_NOTES.txt</include>
             </includes>
             <excludes>
+                <exclude>csvfilerepo/failed/*.csv</exclude>
+                <exclude>csvfilerepo/in/*.csv</exclude>
+                <exclude>csvfilerepo/out/*.csv</exclude>
             	<exclude>*.git</exclude>
+            	<exclude>*.gitignore</exclude>
             	<exclude>*.classpath</exclude>
             	<exclude>*.project</exclude>
             	<exclude>*.settings</exclude>
