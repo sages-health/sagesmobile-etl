@@ -5,3 +5,4 @@
 !src-to-dst-column-mappings.properties
 !dateformats.properties
 target/*
+/target
