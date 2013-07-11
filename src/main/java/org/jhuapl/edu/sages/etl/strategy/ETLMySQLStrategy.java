@@ -500,6 +500,7 @@ public class ETLMySQLStrategy extends ETLStrategyTemplate {
         if (!etl_status.next()) {
             return super.buildCleanseTable(c, socj, save1);
         }
+        getHeaderColumns(socj);
         return c.setSavepoint("createEtlCleanseSavepoint");
     }
 
