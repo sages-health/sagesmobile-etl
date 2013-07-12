@@ -33,7 +33,7 @@ public class ConnectionFactory {
 	 * Establishes database connection to the target database
 	 * @param dbmsType - String with value postgresql (not fully implemented are: msaccess, mysql)
 	 * @param serverName 
-	 * @param dbname
+	 * @param dbName
 	 * @param user
 	 * @param password
 	 * @param portNumber - int value
@@ -48,6 +48,11 @@ public class ConnectionFactory {
 	    connectionProps.put("password", password);
 	    
 	    if (ETLProperties.dbid_mysql.equals(dbmsType)) {
+            try {
+                Class.forName("com.mysql.jdbc.Driver");
+            } catch (ClassNotFoundException e) {
+                throw new SQLException("Driver could not be loaded");
+            }
 	    	con = DriverManager.getConnection("jdbc:" + dbmsType + "://" + serverName + ":" + portNumber + "/", connectionProps);
 	    } else if (ETLProperties.dbid_msaccess.equals(dbmsType)) {
 	    	//http://www.javaworld.com/javaworld/javaqa/2000-09/03-qa-0922-access.html

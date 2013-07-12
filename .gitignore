@@ -5,4 +5,8 @@
 !src-to-dst-column-mappings.properties
 !dateformats.properties
 target/*
-/target
+csvfilerepo/in/*
+csvfilerepo/out/*
+csvfilerepo/failed/*
+csvfilerepo/retry/*
+db/*
