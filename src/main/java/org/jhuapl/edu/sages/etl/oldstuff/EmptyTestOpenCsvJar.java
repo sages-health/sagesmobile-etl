@@ -86,12 +86,6 @@ public class EmptyTestOpenCsvJar {
 	}
 		
 	/**
-	 * @param dbms
-	 * @param portNumber
-	 * @param userName
-	 * @param password
-	 * @param serverName
-	 * @param dbName
 	 * @throws SagesEtlException 
 	 */
 	public EmptyTestOpenCsvJar() throws SagesEtlException {
@@ -259,7 +253,6 @@ public class EmptyTestOpenCsvJar {
 	}
 
 	/**
-	 * @param master_entries_rawdata
 	 * @param file
 	 * @throws FileNotFoundException
 	 * @throws IOException

@@ -3,9 +3,12 @@
  */
 package org.jhuapl.edu.sages.etl.strategy;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -221,7 +224,9 @@ public abstract class ETLStrategyTemplate {
         Savepoint createCleanseSavepoint = c.setSavepoint("createCleanseSavepoint");
         try {
             PS_create_CLEANSE.execute(); //TODO: pgadmin wanted a pk for me to edit thru gui
+            setHeaderColumns(socj);
         } catch (Exception e) {
+            getHeaderColumns(socj);
             m_sqlStateHandler.sqlExceptionHandlerBuildCleanseTable(c, socj, save1, createCleanseSavepoint, e);
 
         }
@@ -242,8 +247,7 @@ public abstract class ETLStrategyTemplate {
         try {
             PS_addcolumn_Flag.execute();
         } catch (Exception e) {
-            m_sqlStateHandler
-                    .sqlExceptionHandlerAlterCleanseTableAddFlagColumn(c, m_socj, save1, createCleanseSavepoint, e);
+            m_sqlStateHandler.sqlExceptionHandlerAlterCleanseTableAddFlagColumn(c, m_socj, save1, createCleanseSavepoint, e);
         }
     }
 
@@ -321,6 +325,35 @@ public abstract class ETLStrategyTemplate {
     public int errorCleanup(SagesOpenCsvJar socj, Savepoint savepoint, Connection connection, File currentCsv,
                             String failedDirPath, Exception e) {
         return m_sqlStateHandler.errorCleanup(socj, savepoint, connection, currentCsv, failedDirPath, e);
+    }
+
+
+    protected void getHeaderColumns(SagesOpenCsvJar socj) {
+        ArrayList<String> header_names = new ArrayList<String>();
+        try {
+            String currentLine;
+            BufferedReader columns = new BufferedReader(new FileReader(socj.props_etlconfig.getProperty("csvcolumnheaders")));
+            while((currentLine = columns.readLine()) != null) {
+                header_names.add(currentLine);
+            }
+        } catch (Exception e) {
+            //TODO figure out what to do
+        }
+        socj.header_src = header_names.toArray(socj.header_src);
+    }
+
+    protected void setHeaderColumns(SagesOpenCsvJar socj) {
+        BufferedWriter columns;
+        try {
+            String currentLine;
+            columns = new BufferedWriter(new FileWriter(new File(socj.props_etlconfig.getProperty("csvcolumnheaders")).getAbsoluteFile()));
+            for (String column: socj.header_src) {
+                columns.write(column+"\n");
+            }
+            columns.close();
+        } catch (IOException e) {
+
+        }
     }
 
 
