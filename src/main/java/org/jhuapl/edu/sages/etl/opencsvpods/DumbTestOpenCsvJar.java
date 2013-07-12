@@ -40,6 +40,20 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
         super();
     }
 
+    private static boolean hasProperHeaders(String[] expectedHeaders, String[] actualHeaders) {
+        boolean hasProperHeaders = true;
+        if (expectedHeaders.length != actualHeaders.length || expectedHeaders.length <= 1 || actualHeaders.length <= 1) {
+            hasProperHeaders = false;
+        }
+        for (int i = 1; i < expectedHeaders.length && hasProperHeaders; i++) {
+            if (expectedHeaders[i].compareToIgnoreCase(actualHeaders[i]) != 0) {
+                hasProperHeaders = false;
+            }
+        }
+
+        return hasProperHeaders;
+    }
+
     public Savepoint makeSavePoint(Connection c, File file, String name) {
         Savepoint save = null;
         try {
@@ -126,7 +140,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
         } catch (Exception e) {
             log.fatal("problem occurred trying to process csv files:" + e.getMessage());
         } finally {
-            //TODO probaly should exit at this point
+            //probaly should exit at this point
         }
 
         String DEBUGheader_src = StringUtils.join(socj_dumb.header_src);
@@ -184,6 +198,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
             master_entries_rawdata.clear();
             CSVReader reader_rawdata2 = new CSVReader(new FileReader(file));
             socj_dumb.currentEntries = (ArrayList<String[]>) reader_rawdata2.readAll();
+            String[] columns = socj_dumb.currentEntries.get(0);
             socj_dumb.currentEntries.remove(0);
             /** remove the header row, already got it above */
             master_entries_rawdata.addAll(socj_dumb.currentEntries);
@@ -259,6 +274,33 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
             log.debug("MAPPING KEYS: " + StringUtils.join(socj_dumb.MAPPING_MAP.keySet(), ","));
             log.debug("MAPPING VALUES: " + StringUtils.join(socj_dumb.MAPPING_MAP.values(), ","));
 
+            if (!hasProperHeaders(socj_dumb.header_src, columns)) {
+                File fileRefForStatusLogging = null;
+                try {
+                    if (socj_dumb.isSuccess()) {
+                        log.debug("copy file to 'RETRY' DIRECTORY");
+                        /** Destination dir */
+                        File destinationDir = new File(socj_dumb.props_etlconfig.getProperty("csvretrydir")); //TODO change this to correct directory
+                        log.debug("delete file from 'IN' DIRECTORY");
+                        fileRefForStatusLogging = etlMoveFile(file, destinationDir);
+                    } else {
+                        log.debug("fyi, was an unsuccessful run. errorcleanup already occurred.");
+                    }
+                } catch (IOException io) {
+                    triageLog.fatal("ALERT PROBLEM DELETING FILE: " + io.getMessage());
+                    logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "FAILURE: " + io.getMessage());
+                    closeDbConnection(c);
+                    System.exit(-1);
+                }
+                try {
+                    logFileOutcome(socj_dumb, c, fileRefForStatusLogging, "TRY AGAIN: FILE COLUMN HEADERS DO NOT MATCH EXPECTED");
+                } catch (SagesEtlException e2) {
+                    //???? this bombed when trying to log file processing stats...
+                    triageLog.error(e2.getMessage());
+                }
+                continue;
+            }
+
             /*****************************************
              * SAVEPOINT #2
              *****************************************
@@ -328,7 +370,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
             log.debug("FINISHED MESSY STUFF. ALMOST DONE...\n\n");
             prettyPrintLog.info("--STEP " + (step++) + "-- RUNNING CUSTOM SQL AGAINST STAGING");
 
-            /** TODO
+            /**
              * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
              *   INJECT THE CUSTOM SQL AGAINST THE STAGING TABLE HERE
              * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -345,7 +387,7 @@ public class DumbTestOpenCsvJar extends SagesOpenCsvJar {
 
             prettyPrintLog.info("--STEP " + (step++) + "-- FINAL LOAD INTO THE PRODUCTION TABLE STARTING.");
             /**
-             * TODO
+             *
              *
              * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
              *  INJECT THE CUSTOM TRANSFER SQL AGAINST THE FINAL PRODUCTION TABLE HERE

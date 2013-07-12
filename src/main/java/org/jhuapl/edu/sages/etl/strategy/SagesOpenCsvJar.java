@@ -163,7 +163,7 @@ public abstract class SagesOpenCsvJar {
     /**
      * header columns used to define the CLEANSE table schema
      */
-    protected String[] header_src = new String[0];
+    protected String[] header_src = new String[0]; //TODO use this to get the list of expected column headers
 
     /**
      * errorFlag to control what to do on certain errors
