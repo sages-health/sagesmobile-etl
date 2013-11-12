@@ -224,9 +224,9 @@ public abstract class ETLStrategyTemplate {
         Savepoint createCleanseSavepoint = c.setSavepoint("createCleanseSavepoint");
         try {
             PS_create_CLEANSE.execute(); //TODO: pgadmin wanted a pk for me to edit thru gui
-            setHeaderColumns(socj);
+//            setHeaderColumns(socj);
         } catch (Exception e) {
-            getHeaderColumns(socj);
+//            getHeaderColumns(socj);
             m_sqlStateHandler.sqlExceptionHandlerBuildCleanseTable(c, socj, save1, createCleanseSavepoint, e);
 
         }
