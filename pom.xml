@@ -10,7 +10,7 @@
   
   <groupId>org.jhuapl.edu.sages</groupId>
   <artifactId>sages-etl</artifactId>
-  <version>1.0.0-RELEASE</version>
+  <version>1.0.1-RELEASE</version>
   <packaging>jar</packaging>
 
   <name>sages-etl</name>
