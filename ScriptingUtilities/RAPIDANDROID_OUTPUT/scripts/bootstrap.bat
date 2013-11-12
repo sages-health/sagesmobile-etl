@@ -1,6 +1,7 @@
 ::  AUTHOR pokuam1                                          :
 ::  ORIGINAL DATE 1/09/11                                   : 
 ::  REFACTOR DATE 12/06/11                                  :
+::  REFACTOR DATE 11/04/13                                  :
 ::                                                          :
 :::Explanation of Directory Structures ::::::::::::::::::::::
 :: 
@@ -17,7 +18,7 @@
 ::    C:\PATH_TO_ROOT_SMS_DIR\sages-etl-1.0-SNAPSHOT-bin\
 
 
-set SCRIPTNAME=glue
+set SCRIPTNAME=bootstrap
 @echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 @echo starting %SCRIPTNAME% script...
 @echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -27,7 +28,7 @@ set CURDIR=%CD%
 set VERSION=1.0.1-RELEASE
 
 :: execute .sh script to copy csv files from source Android device to destination machine
-sh pullCsvAndDiff.sh
+sh pullCsvAndDiff.sh -m bootstrap
 
 ::cd ..\..\..\sages-etl-%VERSION%-module\
 cd ..\..\..\
