@@ -3,6 +3,7 @@
  */
 package org.jhuapl.edu.sages.etl;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Properties;
@@ -59,9 +60,13 @@ public class ETLProperties implements PropertiesLoader {
 			this.props_etlconfig.load(new FileInputStream("etlconfig.properties"));
 			this.props_mappings.load(new FileInputStream("src-to-dst-column-mappings.properties"));
 			this.props_dateformats.load(new FileInputStream("dateformats.properties"));
-			this.props_customsql_cleanse.load(new FileInputStream("customsql\\cleanse_table\\cleanse_sql.properties"));
-			this.props_customsql_staging.load(new FileInputStream("customsql\\staging_table\\staging_sql.properties"));
-			this.props_customsql_final_to_prod.load(new FileInputStream("customsql\\staging-to-final_loader\\staging-to-final_loader_sql.properties"));
+
+            //TODO: AK - These filenames and paths need to be specified in an external property file that can be passed
+            //           in.  For the time being, it is sufficient to remove the hard coded path separators and replace
+            //           with File.separator
+			this.props_customsql_cleanse.load(new FileInputStream("customsql" + File.separator + "cleanse_table" + File.separator + "cleanse_sql.properties"));
+			this.props_customsql_staging.load(new FileInputStream("customsql" + File.separator + "staging_table" + File.separator + "staging_sql.properties"));
+			this.props_customsql_final_to_prod.load(new FileInputStream("customsql" + File.separator + "staging-to-final_loader" + File.separator + "staging-to-final_loader_sql.properties"));
 		} catch (IOException e){
 			//TODO: LOG THIS ERROR: LIST OUT THE VALID PROPERTY FILES NAMES
 			e.printStackTrace();

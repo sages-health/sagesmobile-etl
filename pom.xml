@@ -2,12 +2,14 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+ <!--
   <parent>
 	  <groupId>edu.jhuapl</groupId> 
 	  <artifactId>jhuapl</artifactId> 
-	  <version>1.3-SNAPSHOT</version> 
+	  <version>3.2.1-RELEASE</version>
   </parent>
-  
+  -->
+
   <groupId>org.jhuapl.edu.sages</groupId>
   <artifactId>sages-etl</artifactId>
   <version>1.0.1-RELEASE</version>
